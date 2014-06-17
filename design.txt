@@ -11,9 +11,9 @@ The file system starts with a UNIX-format text metadata area of the following fo
 
 TrivialFS=80a29844-f5e3-11e3-b1c1-b827eb896db5
 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-<start>,<size>=<name1>,<name2>,...
+<start>,<size>=<name1>|<name2>|...
 ...
-<start>,<size>=<name1>,<name2>,...
+<start>,<size>=<name1>|<name2>|...
 EOF
 
 Whitespace of empty lines is not allowed in the metadata area, except that whitespace (but no newline character) is allowed in file names.
@@ -38,11 +38,13 @@ The minimum size possible for a filesystem is 90 Bytes, which contains the manda
 
 The scan for a file name starts at the beginning of the metadata area; the first matching file will be found.
 
-File names can have any size including the empty string, and they can contain any characters except "," and newline.
+File names can have any size including the empty string, and they can contain any characters (including "=") except "|" (the pipe character) and newline.
 
 However, implementation restrictions in the scripts suggest only ASCII characters should be used, whitespace other than ASCII SPACE should be avoided.
 
 Quoting characters like backslashes or quotes should also be avoided for the same reason.
+
+There is no direct support for subdirectories, but it can be emulated by including "/" as part of the filenames which serve no special purpose in TrivialFS. For example, instead of a subdirector d with two files a and b within it, two filenames d/a and d/b could be used with a similar effect. There is no way to "cd" into a subdirectory, though. The file system generation script will in fact use this approach if subdirectories are present in the input directory.
 
 The metadata area is not designed to be modified after filesystem creation.
 
