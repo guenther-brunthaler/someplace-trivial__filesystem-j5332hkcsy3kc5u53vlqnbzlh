@@ -65,3 +65,5 @@ There are four scripts:
 * trivialfs_read accepts an offset and size as optional arguments, or reads a line containing both (as written by trivialfs_file) from standard input, and writes the contents of the file to standard output.
 
 * trivialfs_write has the same arguments as trivialfs_write, but accepts up to as many bytes from standard input as the file contents allows, and overwrites the beginning of the file contents with that.
+
+* trivialfs_explode is the opposite of trivialfs_gen and populates the contents of the current directory with the contents of a TrivialFS, a path to which can be specified either as the only argument or will be read from standard input.
