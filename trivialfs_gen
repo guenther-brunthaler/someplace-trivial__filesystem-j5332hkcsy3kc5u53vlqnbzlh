@@ -3,7 +3,7 @@ HDR_KEY=TrivialFS
 HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 
 cleanup() {
-	for t in "$T" "$T2"
+	for t in "$T" "$T2" "$T3"
 	do
 		test -n "$t" && rm -- "$t"
 	done
@@ -11,20 +11,34 @@ cleanup() {
 }
 
 set -e
-OK=; T=; T2=
+OK=; T=; T2=; T3=
 trap cleanup 0
 FSUUID=
-while getopts tru: OPT
+VERBOSE=
+OUT=
+DUMP=
+while getopts dvtru: OPT
 do
 	case $OPT in
+		v) VERBOSE=y;;
 		u) FSUUID=$OPTARG;;
 		r | t) FSUUID=`uuidgen -$OPT`;;
+		d) DUMP=y;;
 		*) fail
 	esac
 done
 shift `expr $OPTIND - 1`
+test -n "$1" && { OUT=$1; shift; }
+test $# = 0
+if test -n "$DUMP"
+then
+	# Perform a hex dump with decimal offsets for stdin or file argument.
+	set -- hexdump -e '"%10_ad" 16/1 " %02x"' -e '" |" 16 "%_p" "|\n"'
+	test -n "$OUT" && set -- "$@" "$OUT"
+	exec "$@"
+fi
 test -z "$FSUUID" && FSUUID=`uuidgen -r`
-T=`tempfile`; T2=`tempfile`
+T=`tempfile`; T2=`tempfile`; T3=`tempfile`
 find -type f -o -type l | cut -d / -f2- | LC_ALL=C sort \
 | while IFS= read -r fn
 do
@@ -37,7 +51,7 @@ done | sort -sn -k2 | {
 		test -f "$f"
 		size=`stat -c %s -- "$f"`
 		echo "$start,$size=$fn"
-		cat "$f" >> "$T2"
+		cat "$f" >> "$T"
 		start=`expr $start + $size`
 	}
 	cat <<- .
@@ -57,5 +71,38 @@ done | sort -sn -k2 | {
 	done
 	out
 	echo EOF
-} #> "$T"
+} > "$T2"
+lsize=0
+its=0
+while
+	size=`stat -c %s -- "$T2"`
+	test $lsize != $size
+do
+	test $lsize -lt $size
+	# Add increment of $size relative to $lsize to all offsets in $T2.
+	inc=`expr $size - $lsize`
+	cat "$T2" > "$T3"
+	while read -r LINE
+	do
+		case $LINE in
+			[0-9]*)
+				rest=",${LINE#*,}"; start=${LINE%"$rest"}
+				LINE=`expr $start + $inc`$rest
+		esac
+		echo "$LINE"
+	done < "$T3" > "$T2"
+	lsize=$size
+	its=`expr $its + 1`
+done
+cat "$T" >> "$T2"
+if test -n "$OUT"
+then
+	cat "$T2" > "$OUT"
+else
+	cat "$T2"
+	tty -s <& 1 && echo "================" >& 2
+fi
+echo "Trivial FS creation successful." >& 2
+test -n "$VERBOSE" && echo \
+	"$its iterations for offset correction were required." >& 2
 OK=Y
