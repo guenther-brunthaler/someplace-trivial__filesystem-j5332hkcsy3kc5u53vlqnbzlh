@@ -1,0 +1,24 @@
+#! /bin/sh -e
+trap 'echo "Failed!" >& 2' 0
+t=`tempfile`
+exec 5> "$t"
+rm -- "$t"
+find -type f -o -type l | cut -d / -f2- | LC_ALL=C sort \
+| while IFS= read -r fn
+do
+	stat -Lc "%i |%n" -- "$fn"
+done | sort -sn -k2 | {
+	li=
+	while read -r i n
+	do
+		if test x"$li" != x"$i"
+		then
+			test -n "$li" && printf "%s\n" "$fn"
+			li=$i; fn=${n#?}
+		else
+			fn=$fn$n
+		fi
+	done
+	test -n "$li" && printf "%s\n" "$fn"
+} #>& 5
+trap - 0
