@@ -1,0 +1,94 @@
+#! /bin/sh
+HDR_KEY=TrivialFS
+HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
+
+cleanup() {
+	for t in "$T" "$T2"
+	do
+		test -n "$t" && rm -- "$t"
+	done
+	test -n "$OK" || echo "Failed!" >& 2
+}
+
+set -e
+OK=; T=; T2=
+trap cleanup 0
+TARGET_UUID=
+LOCATE_NBDs=
+LOCATE_NOTHING=
+while getopts ni OPT
+do
+	case $OPT in
+		n) LOCATE_NBDs=y;;
+		i) LOCATE_NOTHING=y;;
+		*) fail
+	esac
+done
+shift `expr $OPTIND - 1`
+test $# != 0 && { TARGET_UUID=$1; shift; }
+test $# = 0
+test -n "$TARGET_UUID"
+if test -z "$LOCATE_NOTHING"
+then
+	test -f "$0"; test -x "$0"
+	T=`tempfile`; T2=`tempfile`
+	dir=/sys/block
+	ls -1 -- "$dir" 2> /dev/null | while IFS= read -r dev
+	do
+		order=1
+		case $dev in
+			nbd*)
+				test -n "$LOCATE_NBDs" || continue
+				order=2
+		esac
+		devp=$dir/$dev
+		di=$devp/dev
+		test -f "$di" || continue
+		echo $order
+		cat -- "$di"
+		ls -1d "$devp/$dev"* 2> /dev/null \
+		| while IFS= read -r dev
+		do
+			di=$dev/dev
+			test -f "$di" || continue
+			echo $order
+			cat -- "$di"
+		done
+	done | while read order
+	do
+		read dev
+		echo $dev $order
+	done | LC_ALL=C sort -k1 > "$T"
+	find -L /dev/ -type b 2> /dev/null | while IFS= read -r dev
+	do
+		case $dev in
+			/dev/vg*/*) order=1;;
+			/dev/mapper/*) order=2;;
+			*) order=3
+		esac
+		majmin=`stat -Lc '%t:%T' "$dev"`
+		maj=${majmin%%:*}; min=${majmin#$maj:}
+		maj=`printf %d 0x$maj`;	min=`printf %d 0x$min`
+		len=`printf %s: "$dev" | wc -c`
+		echo "$maj $min $order $len $dev"
+	done | sort -nk1,4 | {
+		last=
+		while read -r maj min dummy dummy dev
+		do
+			this=$maj:$min
+			test x"$this" = x"$last" && continue
+			echo "$this $dev"
+			last=$this
+		done
+	} | LC_ALL=C sort -k1 > "$T2"
+	LC_ALL=C join -- "$T" "$T2" | while IFS=: read head tail
+	do
+		echo "$head $tail"
+	done | sort -n -k3 -k1 -k2 | cut -d" " -f4- \
+	| "$0" -i "$TARGET_UUID"
+	OK=y
+	exit
+fi
+test -z "$LOCATE_NBDs"
+cat
+OK=y

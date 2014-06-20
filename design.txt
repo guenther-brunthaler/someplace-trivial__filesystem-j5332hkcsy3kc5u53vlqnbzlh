@@ -82,7 +82,7 @@ There are four scripts:
 
 * trivialfs_gen generates a new trivial file system recursively from the contents of the current directory. Symbolic links will automatically be transformed into hard links within the generated file system. The generated file system will either be written to the file or block device given as the only argument, or to standard output if invoked without arguments.
 
-* trivialfs_volume accepts a UUID as argument and scans for a block device containing a TrivialFS with a matching "UUID="-line. Option -l includes loop devices, and -n includes NBD devices. Alternatively, a list of files can be specified as additional arguments after the UUID on the command line. In this case, those files are treated as file system image files and are examined in the same order. If successful, the path to the first image file or block device containing the requested UUID is written to standard output.
+* trivialfs_volume accepts a UUID as argument and scans for a block device containing a TrivialFS with a matching "UUID="-line. Option -n includes NBD devices. If the -i option is specified, no block devices are searched for automatically, and instead a list of block devices or image files is read from standard input. If successful, the path to the first image file or block device containing the requested UUID is written to standard output.
 
 * trivialfs_file accepts an optional volume pathname as returned by trivialfs_volume and a file name as arguments, and (if successful only) writes the start index, byte size and volume pathname as a single line to standard output, separated by a single ASCII SPACE. If only a single argument is provided, it reads the volume path name from standard input.
 
