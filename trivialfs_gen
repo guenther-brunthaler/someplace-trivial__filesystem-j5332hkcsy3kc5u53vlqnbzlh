@@ -46,11 +46,13 @@ do
 done | sort -sn -k2 | {
 	out() {
 		test -z "$li" && return
-		local f size
+		local f size off
 		f=${fn%%|*}
 		test -f "$f"
+		off=$start
 		size=`stat -c %s -- "$f"`
-		echo "$start,$size=$fn"
+		test $size = 0 && off=0
+		echo "$off,$size=$fn"
 		cat "$f" >> "$T"
 		start=`expr $start + $size`
 	}
@@ -87,7 +89,10 @@ do
 		case $LINE in
 			[0-9]*)
 				rest=",${LINE#*,}"; start=${LINE%"$rest"}
-				LINE=`expr $start + $inc`$rest
+				case $rest in
+					",0="*) ;;
+					*) LINE=`expr $start + $inc`$rest
+				esac
 		esac
 		echo "$LINE"
 	done < "$T3" > "$T2"
