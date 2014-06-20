@@ -28,10 +28,10 @@ shift `expr $OPTIND - 1`
 test $# != 0 && { TARGET_UUID=$1; shift; }
 test $# = 0
 test -n "$TARGET_UUID"
+T=`tempfile`; T2=`tempfile`
 if test -z "$LOCATE_NOTHING"
 then
 	test -f "$0"; test -x "$0"
-	T=`tempfile`; T2=`tempfile`
 	dir=/sys/block
 	ls -1 -- "$dir" 2> /dev/null | while IFS= read -r dev
 	do
@@ -90,5 +90,20 @@ then
 	exit
 fi
 test -z "$LOCATE_NBDs"
-cat
+cat << EOF > "$T2"
+$HDR_KEY=$HDR_VAL
+COMPATIBLE_VERSION=1
+UUID=$TARGET_UUID
+EOF
+size=`stat -c %s "$T2"`
+test -n "$size"
+while IFS= read -r dev
+do
+	dd if="$dev" of="$T" bs=$size count=1 2> /dev/null || continue
+	cmp -s "$T" "$T2" || continue
+	printf '%s\n' "$dev"
+	OK=y
+	exit
+done
 OK=y
+false
