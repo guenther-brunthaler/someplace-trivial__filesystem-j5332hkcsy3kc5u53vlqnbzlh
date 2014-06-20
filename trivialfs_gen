@@ -14,14 +14,16 @@ set -e
 OK=; T=; T2=; T3=
 trap cleanup 0
 FSUUID=
+FSLABEL=
 VERBOSE=
 OUT=
 DUMP=
-while getopts dvtru: OPT
+while getopts L:l:dvtru: OPT
 do
 	case $OPT in
 		v) VERBOSE=y;;
 		u) FSUUID=$OPTARG;;
+		L | l) FSLABEL=$OPTARG;;
 		r | t) FSUUID=`uuidgen -$OPT`;;
 		d) DUMP=y;;
 		*) fail
@@ -46,9 +48,11 @@ do
 done | sort -sn -k2 | {
 	cat <<- .
 	$HDR_KEY=$HDR_VAL
+	COMPATIBLE_VERSION=1
 	UUID=$FSUUID
-	# offset,size,mode,initial_mtime=name1
-	# |name2
+	LABEL=$FSLABEL
+	ACTUAL_VERSION=1
+	CREATED=`date -u +%s`
 .
 	start=0
 	li=
@@ -61,7 +65,7 @@ done | sort -sn -k2 | {
 			off=$start
 			size=`stat -c %s -- "$fn"`
 			test $size = 0 && off=0
-			echo "$off,$size,`stat -c %a,%Y "$fn"`=$fn"
+			echo "@$off+$size,`stat -c A=%a,T=%Y "$fn"`,P=$fn"
 			cat "$fn" >> "$T"
 			start=`expr $start + $size`
 			li=$i
@@ -84,11 +88,15 @@ do
 	while read -r LINE
 	do
 		case $LINE in
-			[0-9]*)
-				rest=",${LINE#*,}"; start=${LINE%"$rest"}
+			"@"*)
+				rest="+${LINE#*+}"
 				case $rest in
-					",0,"*) ;;
-					*) LINE=`expr $start + $inc`$rest
+					"+0,"*) ;;
+					*)
+						start=${LINE%"$rest"}
+						start=${start#?}
+						start=`expr $start + $inc`
+						LINE="@"$start$rest
 				esac
 		esac
 		echo "$LINE"
