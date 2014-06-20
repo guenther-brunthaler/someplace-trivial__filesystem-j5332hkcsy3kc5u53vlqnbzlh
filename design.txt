@@ -28,13 +28,21 @@ The first line is used to identify the trivial file system as such. It could be 
 
 The second line identifies the target UUID when scanning for a particular instance of the trival file system with a given UUID. It must be specified in lower case with the dashes as shown above. Use "uuidgen" to generate appropriately formatted UUIDs.
 
-The remaining lines describe directory entries, and metadata area stops once a line has been read which does not follow the syntax for a directory entry.
+The remaining lines describe comments or directory entries, and metadata area stops once a line has been read which does not follow the syntax for a directory entry or comment.
 
 By convention, that line will contain the text "EOF", but this is not actually required. Any line not conforming to a valid directory entry syntax terminates the metadata area.
 
 After this area, the file contents area starts.
 
-File contents are described by <start>,<size> which are unsigned decimal integer starting offset and size. Both have byte granularity. The starting offset is relative to the first byte of the file system.
+A comment is any line starting with a "#" and will be ignored. Note that comments are not allowed in the first two lines.
+
+File contents are described by "<start>,<size>,<mode>,<mtime>=<first_name>" which are unsigned decimal integer starting offset and size. Both have byte granularity. The starting offset is relative to the first byte of the file system.
+
+The octal file <mode> and the decimal <mtime> are only included to allow trivialfs_explode to restore the original date and file mode. Further file attributes like ownership or extended attributes are not recorded at all.
+
+Within the newly created file system, the <mtime> will not be updated by write accesses; so it is actually only the mtime at the time of filesystem creation.
+
+After every line describing file contents, any number of continuation lines may follow which contain "|<another_name>" in order to specify alternative names for the same file (i. e. hard links).
 
 The starting offset is not really relevant for files of size zero, but by convention all such files shall use a starting offset of zero, even though this is not actually part of the file contents area.
 
@@ -44,7 +52,7 @@ The minimum size possible for a filesystem is 90 Bytes, which contains the manda
 
 The scan for a file name starts at the beginning of the metadata area; the first matching file will be found.
 
-File names can have any size including the empty string, and they can contain any characters (including whitespace, "=" and "|") except newline.
+File names can have any size including the empty string, and they can contain any character except newline.
 
 There is no direct support for subdirectories, but it can be emulated by including "/" as part of the filenames which serves no special purpose in TrivialFS. For example, instead of a subdirector d with two files a and b within it, two filenames d/a and d/b could be used with a similar effect. There is no way to "cd" into a subdirectory, though. The file system generation script will in fact use this approach if subdirectories are present in the input directory.
 
