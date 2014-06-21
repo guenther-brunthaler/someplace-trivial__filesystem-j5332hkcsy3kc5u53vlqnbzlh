@@ -1,0 +1,49 @@
+#! /bin/sh
+# Accepts an optional volume pathname as returned by trivialfs_volume and a
+# file name as arguments, and (if successful only) writes the start index,
+# byte size and volume pathname as a single line to standard output, separated
+# by a single ASCII SPACE. If only a single argument is provided, it reads the
+# volume path name from standard input.
+#
+# trivialfs_file version 14.172
+#
+# (c) 2014 by Guenther Brunthaler.
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
+
+set -e
+trap 'echo "Failed!" >& 2' 0
+TARGET_PATH=
+VOLUME_PATH=
+! getopts "" OPT
+if test $# -ge 2
+then
+	VOLUME_PATH=$1; shift
+else
+	IFS= read -r VOLUME_PATH
+fi
+test $# != 0 && { TARGET_PATH=$1; shift; }
+test $# = 0
+test -n "$VOLUME_PATH"
+test -n "$TARGET_PATH"
+
+found() {
+	echo "$start $size $VOLUME_PATH"
+	trap - 0
+	exit
+}
+
+start=; size=
+while IFS= read -r LINE
+do
+	case $LINE in
+		"@"*"P="*)
+			start=${LINE%%","*}; size=${start#*"+"}
+			start=${start#"@"}; start=${start%"+"*}
+			test x"${LINE#*,P=}" = x"$TARGET_PATH" && found
+			;;
+		"|"*) test x"$LINE" = x"|$TARGET_PATH" && found
+	esac
+done < "$VOLUME_PATH"
+trap - 0
+false

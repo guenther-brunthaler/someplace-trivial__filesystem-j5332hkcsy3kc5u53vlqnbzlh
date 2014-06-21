@@ -2,6 +2,19 @@
 HDR_KEY=TrivialFS
 HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 
+# Accepts a UUID as argument and scans for a block device containing a
+# TrivialFS with a matching "UUID="-line. Option -n includes NBD devices. If
+# the -i option is specified, no block devices are searched for automatically,
+# and instead a list of block devices or image files is read from standard
+# input. If successful, the path to the first image file or block device
+# containing the requested UUID is written to standard output.
+#
+# trivialfs_volume version 14.172
+#
+# (c) 2014 by Guenther Brunthaler.
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
+
 cleanup() {
 	for t in "$T" "$T2"
 	do

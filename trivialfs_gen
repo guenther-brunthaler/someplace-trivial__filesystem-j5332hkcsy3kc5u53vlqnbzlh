@@ -2,6 +2,18 @@
 HDR_KEY=TrivialFS
 HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 
+# Generates a new trivial file system recursively from the contents of the
+# current directory. Symbolic links will automatically be transformed into
+# hard links within the generated file system. The generated file system will
+# either be written to the file or block device given as the only argument, or
+# to standard output if invoked without arguments.
+#
+# trivialfs_gen version 14.172
+#
+# (c) 2014 by Guenther Brunthaler.
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
+
 cleanup() {
 	for t in "$T" "$T2" "$T3"
 	do
