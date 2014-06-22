@@ -88,7 +88,7 @@ There are several scripts:
 
 * trivialfs_file
 
-* trivialfs_read expects the output of trivialfs_file as standard input, and writes the contents of the described file from the trivial file system to standard output.
+* trivialfs_read
 
 * trivialfs_write has the same arguments as trivialfs_read, but accepts up to as many bytes from standard input as the file contents allows, and overwrites the beginning of the described file contents with that.
 

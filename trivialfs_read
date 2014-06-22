@@ -1,0 +1,117 @@
+#! /bin/sh
+# Expects the output of trivialfs_file as standard input, and writes the
+# contents of the described file from the trivial file system to standard
+# output. Arguments can further restrict output. See the comments in the
+# large "case" statement below for an explanation of supported arguments.
+#
+# trivialfs_read version 14.172
+#
+# (c) 2014 by Guenther Brunthaler.
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
+
+write_from_to() {
+	# Writes data in 4 MiB blocks and -alignment. Reduces block size in
+	# steps of 4 bits if necessary, and use byte-alignment as a last
+	# resort. Unaligned blocks are split and written separately.
+	set -- "$@" 1 end
+	while :
+	do
+		ns=`expr $s '*' 16`
+		nb=`expr '(' $b + 15 ')' / 16 || :`; ne=`expr $e / 16 || :`
+		
+	done
+}
+
+write_start_to_stop() {
+	write_from_to $start $stop
+	start=$stop
+}
+
+set -e
+trap 'echo "Failed!" >& 2' 0
+! getopts "" OPT
+
+read -r FILE_START FILE_SIZE VOLUME_PATH
+start=$FILE_START
+stop=
+while test $# != 0
+do
+	# Process command line arguments.
+	#
+	# Initially, the current position is set to the first byte of the
+	# file, and the output condition is set.
+	#
+	# After the last argument has been processed (or immediately if there
+	# are no arguments) and if the output condition is also set, the bytes
+	# from the current position until EOF will be output.
+	case $1 in
+		"@-"[0-9]*)
+			# "@-N" sets position N bytes backwards relative to
+			# EOF and sets the output condition.
+			n=${1#??}
+			test $n -gt $FILE_SIZE && n=$FILE_SIZE
+			start=`expr $FILE_START + $FILE_SIZE - $n || :`
+			stop=
+			;;
+		"@"[0-9]*)
+			# "@N" sets position N bytes after first byte of file
+			# and sets the output condition.
+			n=${1#?}
+			test $n -gt $FILE_SIZE && n=$FILE_SIZE
+			start=`expr $FILE_START + $n || :`
+			stop=
+			;;
+		"-"[0-9]*)
+			# "-N" sets position N bytes before current position
+			# and sets the output condition.
+			n=${1#?}
+			t=`expr $start - $FILE_START || :`
+			test $n -gt $t && n=$t
+			start=`expr $start - $n || :`
+			stop=
+			;;
+		"+"[0-9]*)
+			# "+N" sets position N bytes after current position
+			# and sets the output condition.
+			n=${1#?}
+			t=`expr $FILE_START + $FILE_SIZE - $start || :`
+			test $n -gt $t && n=$t
+			start=`expr $start + $n || :`
+			stop=
+			;;
+		"="[0-9]*)
+			# "=N" outputs N bytes starting at the current
+			# position, advancing it accordingly. Then the output
+			# condition is unset.
+			n=${1#?}
+			t=`expr $FILE_START + $FILE_SIZE - $start || :`
+			test $n -gt $t && n=$t
+			stop=`expr $start + $n || :`
+			write_start_to_stop
+			;;
+		":"*)
+			# ":string" annotates output by injecting the string
+			# and a newline character into the output. Has no
+			# effect on the current position.
+			s=${1#?}
+			printf '%s\n' "$s"
+			;;
+		";"*)
+			# ";string" annotates output by injecting the string
+			# into the output. Has no effect on the current
+			# position. Make sure to shell-escape ';' properly.
+			s=${1#?}
+			printf '%s' "$s"
+			;;
+		*) false
+	esac
+	shift
+done
+if test -z "$stop"
+then
+	stop=`expr $FILE_START + $FILE_SIZE || :`
+	write_start_to_stop
+fi
+
+trap - 0
