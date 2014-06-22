@@ -63,7 +63,7 @@ done | sort -sn -k2 | {
 	COMPATIBLE_VERSION=1
 	UUID=$FSUUID
 	LABEL=$FSLABEL
-	ACTUAL_VERSION=1
+	ACTUAL_VERSION=2
 	CREATED=`date -u +%s`
 .
 	start=0
@@ -77,7 +77,7 @@ done | sort -sn -k2 | {
 			off=$start
 			size=`stat -c %s -- "$fn"`
 			test $size = 0 && off=0
-			echo "@$off+$size,`stat -c A=%a,T=%Y "$fn"`,P=$fn"
+			echo "@$off+$size,`stat -c M=%a,T=%Y "$fn"`,P=$fn"
 			cat "$fn" >> "$T"
 			start=`expr $start + $size`
 			li=$i

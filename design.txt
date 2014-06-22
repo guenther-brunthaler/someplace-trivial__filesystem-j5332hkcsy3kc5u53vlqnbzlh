@@ -13,7 +13,7 @@ TrivialFS=80a29844-f5e3-11e3-b1c1-b827eb896db5
 COMPATIBLE_VERSION=1
 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 LABEL=volume label
-ACTUAL_VERSION=1
+ACTUAL_VERSION=2
 CREATED=<unixtime>
 <start1>,<size1>=<name1_1>
 |<name1_2>
@@ -50,7 +50,7 @@ By convention, that line will contain the text "EOF", but this is not actually r
 
 After this area, the file contents area starts.
 
-File contents are described by "@<start>+<size>,A=<mode>,T=<mtime>,P=<first_name>" which are unsigned decimal integer starting offset and size. Both have byte granularity. The starting offset is relative to the first byte of the file system.
+File contents are described by "@<start>+<size>,M=<mode>,T=<mtime>,P=<first_name>" which are unsigned decimal integer starting offset and size. Both have byte granularity. The starting offset is relative to the first byte of the file system.
 
 The octal file <mode> and the decimal UNIX-timestamp <mtime> are only included to allow trivialfs_explode to restore the original date and file mode. Further file attributes like ownership or extended attributes are not recorded at all.
 
@@ -59,6 +59,8 @@ Within the newly created file system, the <mtime> will not be updated by write a
 Additional key/value attribute pairs may be added and will be ignored my a reader which does not understand them. Key names must not necessarily be one character long, but should be as short as possible without being ambiguous in order to save space. Comparison is case-sensitive. Only alphanumerics plus underscore are allowed in key names. Keys must be unique and the order of pairs is arbitrary, except for the "P"-attribute must always be the last attribute in the line. "@start+size" must always precede all key/value pairs in the entry line. 
 
 After every line describing file contents, any number of continuation lines may follow which contain "|<another_name>" in order to specify alternative names for the same file (i. e. hard links). Such lines will be interpreted as a continuation of the "P"-attribute.
+
+Symbolic links are currently not supported and will be silently converted into hard-links by the filesystem creation script. But it can be implemented at a later time by using a bit in <mode> to mark a file as symlink. The contents of such special files will then contain the information returned by readlink. The file location script needs to be enhanced in order to resolve such symlinks.
 
 The starting offset is not really relevant for files of size zero, but by convention all such files shall use a starting offset of zero, even though this is not actually part of the file contents area.
 
