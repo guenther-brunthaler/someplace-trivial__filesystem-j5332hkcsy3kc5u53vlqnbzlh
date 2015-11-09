@@ -9,22 +9,23 @@ HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 # input. If successful, the path to the first image file or block device
 # containing the requested UUID is written to standard output.
 #
-# trivialfs_volume version 14.172
+# trivialfs_volume version 15.313
 #
-# (c) 2014 by Guenther Brunthaler.
+# (c) 2014 - 2015 by Guenther Brunthaler.
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
 
 cleanup() {
+	local rc=$?
 	for t in "$T" "$T2"
 	do
 		test -n "$t" && rm -- "$t"
 	done
-	test -n "$OK" || echo "Failed!" >& 2
+	test $rc = 0 || echo "${0##*/} failed!" >& 2
 }
 
 set -e
-OK=; T=; T2=
+T=; T2=
 trap cleanup 0
 TARGET_UUID=
 LOCATE_NBDs=
@@ -41,6 +42,9 @@ shift `expr $OPTIND - 1`
 test $# != 0 && { TARGET_UUID=$1; shift; }
 test $# = 0
 test -n "$TARGET_UUID"
+tempfile() {
+	mktemp -- "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX
+}
 T=`tempfile`; T2=`tempfile`
 if test -z "$LOCATE_NOTHING"
 then
@@ -99,13 +103,12 @@ then
 		echo "$head $tail"
 	done | sort -n -k3 -k1 -k2 | cut -d" " -f4- \
 	| "$0" -i "$TARGET_UUID"
-	OK=y
 	exit
 fi
 test -z "$LOCATE_NBDs"
 cat << EOF > "$T2"
 $HDR_KEY=$HDR_VAL
-COMPATIBLE_VERSION=1
+COMPATIBLE_VERSION=3
 UUID=$TARGET_UUID
 EOF
 size=`stat -c %s "$T2"`
@@ -115,8 +118,6 @@ do
 	dd if="$dev" of="$T" bs=$size count=1 2> /dev/null || continue
 	cmp -s "$T" "$T2" || continue
 	printf '%s\n' "$dev"
-	OK=y
 	exit
 done
-OK=y
 false

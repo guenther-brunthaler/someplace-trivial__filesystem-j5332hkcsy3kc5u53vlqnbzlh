@@ -8,22 +8,23 @@ HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 # either be written to the file or block device given as the only argument, or
 # to standard output if invoked without arguments.
 #
-# trivialfs_gen version 14.172
+# trivialfs_gen version 15.313
 #
-# (c) 2014 by Guenther Brunthaler.
+# (c) 2014 - 2015 by Guenther Brunthaler.
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
 
 cleanup() {
+	local rc=$?
 	for t in "$T" "$T2" "$T3"
 	do
 		test -n "$t" && rm -- "$t"
 	done
-	test -n "$OK" || echo "Failed!" >& 2
+	test $rc = 0 || echo "${0##*/} failed!" >& 2
 }
 
 set -e
-OK=; T=; T2=; T3=
+T=; T2=; T3=
 trap cleanup 0
 FSUUID=
 FSLABEL=
@@ -52,6 +53,9 @@ then
 	exec "$@"
 fi
 test -z "$FSUUID" && FSUUID=`uuidgen -r`
+tempfile() {
+	mktemp -- "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX
+}
 T=`tempfile`; T2=`tempfile`; T3=`tempfile`
 find -type f -o -type l | cut -d / -f2- | LC_ALL=C sort \
 | while IFS= read -r fn
@@ -60,10 +64,10 @@ do
 done | sort -sn -k2 | {
 	cat <<- .
 	$HDR_KEY=$HDR_VAL
-	COMPATIBLE_VERSION=1
+	COMPATIBLE_VERSION=3
 	UUID=$FSUUID
 	LABEL=$FSLABEL
-	ACTUAL_VERSION=2
+	ACTUAL_VERSION=3
 	CREATED=`date -u +%s`
 .
 	start=0
@@ -127,4 +131,3 @@ fi
 echo "Trivial FS creation successful." >& 2
 test -n "$VERBOSE" && echo \
 	"$its iterations for offset correction were required." >& 2
-OK=Y
