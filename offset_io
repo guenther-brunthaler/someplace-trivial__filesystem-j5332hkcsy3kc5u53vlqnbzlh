@@ -1,0 +1,193 @@
+#! /bin/sh
+error() {
+APP=${0##*/}; cat << EOF
+An error occurred!
+
+$APP is a wrapper around 'dd' which performs
+efficient I/O of arbitrary sizes at arbitrary offsets, saving the
+user the trouble to care about block size or alignment.
+
+Internally, the I/O is split into multiple invocations of 'dd' as
+necessary in order to maximize the I/O buffer size (up to a
+defined maximum) and thus the troughput and I/O efficiency for
+individual invocations, resulting in a series of properly aligned
+non-overlapping adjacent I/O ranges for the invocations.
+
+Usage:
+$APP read <num> bytes @ <offset> from <file>
+$APP read @ <start_offset> through <end_offset_incl> from <file>
+$APP read @ <start_offset> stop @ <end_offset_excl> from <file>
+$APP write <num> bytes @ <offset> into <file>
+$APP write @ <start_offset> through <end_offset_incl> into <file>
+$APP write @ <start_offset> stop @ <end_offset_excl> into <file>
+
+<num> is the maximum number of bytes to be read or written. When
+writing to <file>, it is OK to provide fewer bytes via standard
+input. Fewer bytes will be written to standard output if
+end-of-file is encountered while reading from <file>.
+
+<file> can either be a normal (and possibly sparse) file or a
+special device file.
+
+Example: Read bytes 500 through 799 from /dev/zero, which has
+been provided to the script as file descriptor # 9:
+
+$ $APP read 300 bytes @ 500 from /dev/fd/9 9< /dev/zero \
+  | hexdump -C
+
+Options (before other arguments):
+-d <dd-command>: Command to use internally instead of "dd".
+For example: -d "busybox dd"
+
+-M <bytes>: Maximum buffer size for I/O (default: $max_block_size).
+-v: Verbose operation. Shows details about the I/O operations.
+-n: Show what would be done, but don't actually do anything.
+
+$APP version 15.331
+(c) 2015 by Guenther Brunthaler.
+This script is free software.
+Distribution is permitted under the terms of the GPLv3.
+EOF
+}
+step_factor=16 # I/O is done in integer powers >= 0 of this byte size.
+max_block_size=`expr 8 '*' 1024 '*' 1024` # But no larger than this.
+set -e
+called=$0${@:+ }$@
+trap 'test $? = 0 || error >& 2' 0
+expr 14197294936951 '*' 649657 = 9223372036854775807 > /dev/null # 64 bit?
+
+dd=
+verbose=false
+dry_run=false
+while getopts d:nvM: opt
+do
+	case $opt in
+		d) dd=$OPTARG;;
+		v) verbose=true;;
+		n) dry_run=true;;
+		M) max_block_size=$OPTARG;;
+		*) false
+	esac
+done
+shift `expr $OPTIND - 1 || :`
+if test -z "$dd"
+then
+	dd=`which dd`
+fi
+test -n "$dd"
+
+case $1 in
+	read) reading=true;;
+	write) reading=false;;
+	*) false
+esac; shift
+x_int='\(x\(0\|[1-9][0-9]*\)\)$'
+expr "x$max_block_size" : "$x_int" > /dev/null
+if test x"$1" = x'@'
+then
+	offset=$2; shift 2; expr "x$offset" : "$x_int" > /dev/null
+	case $1 in
+		through) shift; incl=true;;
+		stop)
+			test x"$2" = x'@'; shift 2
+			incl=false;
+			;;
+		*) false
+	esac
+	stop=$1; shift; expr "x$stop" : "$x_int" > /dev/null
+	$incl && stop=`expr $stop + 1`; unset incl
+	test $offset -le $stop
+	bytes=`expr $stop - $offset || :`; unset stop
+else
+	bytes=$1; shift; expr "x$bytes" : "$x_int" > /dev/null
+	test x"$1" = x'bytes'; shift
+	test x"$1" = x'@'; shift
+	offset=$1; shift; expr "x$offset" : "$x_int" > /dev/null
+fi
+case $1 in
+	from) $reading;;
+	into) test $reading = false;;
+	*) false
+esac; shift
+file=$1; shift
+test $# = 0
+$dry_run && echo "Parsed arguments: reading=$reading, num_bytes=$bytes," \
+	"offset=$offset, file='$file'" >& 2
+
+set 1 $offset $bytes end
+not_yet_done=true
+while $not_yet_done
+do
+	not_yet_done=false
+	while test $1 != end
+	do
+		bs=$1 start=$2; count=$3; shift 3
+		nbs=`expr $bs '*' $step_factor `
+		if
+			test $nbs -le $max_block_size \
+			&& nstarti=`
+				expr '(' $start + $step_factor - 1 ')' \
+				/ $step_factor || :
+			` \
+			&& endx=`expr $start + $count || :` \
+			&& nendx=`expr $endx / $step_factor || :` \
+			&& test $nstarti -lt $nendx
+		then
+			starti=`expr $nstarti '*' $step_factor || :`
+			if test $start -lt $starti
+			then
+				set $@ $bs $start `expr $starti - $start`
+			fi
+			n=`expr $nendx - $nstarti`
+			set $@ $nbs $nstarti $n
+			not_yet_done=true
+			starti=`
+				expr '(' $nstarti + $n ')' '*' $step_factor \
+					|| :
+			`
+			if test $starti -lt $endx
+			then
+				set $@ $bs $starti `expr $endx - $starti`
+			fi
+		else
+			set $@ $bs $start $count
+		fi
+	done
+	set $@ $1; shift
+done
+
+run_dd() {
+	if $dry_run
+	then
+		echo "SIMULATION: $dd $*" >& 2
+	else
+		"$dd" "$@" 2> /dev/null
+	fi
+}
+
+while test $1 != end
+do
+	bs=$1 start=$2; count=$3; shift 3
+	if test $count = 0
+	then
+		if $verbose
+		then
+			echo "I/O: ignore empty range @ offset `
+				expr $start '*' $bs
+			` in blocks of $bs bytes." >& 2
+		fi
+		continue
+	fi
+	if $verbose
+	then
+		echo "I/O: bytes @ offset `expr $start '*' $bs || :` through `
+			expr '(' $start + $count ')' '*' $bs - 1 || :
+		` in blocks of $bs bytes." >& 2
+	fi
+	if $reading
+	then
+		run_dd if=$file bs=$bs skip=$start count=$count
+	else
+		run_dd of=$file bs=$bs seek=$start count=$count conv=notrunc
+	fi
+done
