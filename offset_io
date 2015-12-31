@@ -186,8 +186,9 @@ do
 	fi
 	if $reading
 	then
-		run_dd if=$file bs=$bs skip=$start count=$count
+		run_dd if="$file" bs=$bs skip=$start count=$count
 	else
-		run_dd of=$file bs=$bs seek=$start count=$count conv=notrunc
+		run_dd of="$file" bs=$bs seek=$start count=$count \
+			conv=notrunc
 	fi
 done
