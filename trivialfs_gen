@@ -8,9 +8,10 @@ HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 # either be written to the file or block device given as the only argument, or
 # to standard output if invoked without arguments.
 #
-# trivialfs_gen version 15.313
+# trivialfs_gen version 2016.118
 #
-# (c) 2014 - 2015 by Guenther Brunthaler.
+# Copyright (c) 2014-2016 Guenther Brunthaler. All rights reserved.
+# 
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
 
@@ -81,7 +82,7 @@ done | sort -sn -k2 | {
 			off=$start
 			size=`stat -c %s -- "$fn"`
 			test $size = 0 && off=0
-			echo "@$off+$size,`stat -c M=%a,T=%Y "$fn"`,P=$fn"
+			echo "@$off+$size=$fn"
 			cat "$fn" >> "$T"
 			start=`expr $start + $size`
 			li=$i
@@ -107,7 +108,7 @@ do
 			"@"*)
 				rest="+${LINE#*+}"
 				case $rest in
-					"+0,"*) ;;
+					"+0="*) ;;
 					*)
 						start=${LINE%"$rest"}
 						start=${start#?}
