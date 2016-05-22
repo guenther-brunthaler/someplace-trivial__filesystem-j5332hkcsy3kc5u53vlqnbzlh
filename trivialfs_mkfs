@@ -1,0 +1,160 @@
+#! /bin/sh
+HDR_KEY=TrivialFS
+HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
+
+# Creates a new trivial file system.
+#
+# The generated file system will either be written to the file or block device
+# given as the only argument, or to standard output if invoked without
+# arguments.
+#
+# trivialfs_gen version 2016.143
+#
+# Copyright (c) 2014-2016 Guenther Brunthaler. All rights reserved.
+# 
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
+
+cleanup() {
+	local rc=$?
+	for t in "$T" "$T2" "$T3"
+	do
+		test -n "$t" && rm -- "$t"
+	done
+	test $rc = 0 || echo "${0##*/} failed!" >& 2
+}
+
+set -e
+T=; T2=; T3=
+trap cleanup 0
+
+# "42", "42 B", "42 kB", "42 kiB", "42MB, "42GiB", "42TB", "42 PiB", ...
+parse_size() {
+	local num tx unit mult
+	num=`expr x"$1" : x'\(0\|[1-9][0-9]*\)'`
+	tx=${1#"$num"}
+	if test -n "$tx"
+	then
+		unit=`expr x"$tx" : x'[[:space:]]*\(\([kMGTPEZY]i\?\)\?B\)$'`
+		unit=${unit%?}
+		case $unit in
+			"") unit=B;;
+			*i) unit=${unit%?}; mult=1024;;
+			*) mult=1000
+		esac
+		unit=`echo $unit | tr BkMGTPEZY 012345678`
+		while test $unit != 0
+		do
+			tx=`expr $num '*' $mult`
+			test $tx -gt $num
+			num=$tx
+			unit=`expr $unit - 1 || :`
+		done
+	fi
+	echo $num
+}
+
+FSUUID=
+FSLABEL=
+OUT=
+DUMP=
+DEVSIZE=
+while getopts s:L:l:dtru: OPT
+do
+	case $OPT in
+		u) FSUUID=$OPTARG;;
+		L | l) FSLABEL=$OPTARG;;
+		r | t) FSUUID=`uuidgen -$OPT`;;
+		s) DEVSIZE=`parse_size "$OPTARG"`;;
+		d) DUMP=y;;
+		*) fail
+	esac
+done
+shift `expr $OPTIND - 1`
+test -n "$1" && { OUT=$1; shift; }
+test $# = 0
+if test -n "$DUMP"
+then
+	# Perform a hex dump with decimal offsets for stdin or file argument.
+	set -- hexdump -e '"%10_ad" 16/1 " %02x"' -e '" |" 16 "%_p" "|\n"'
+	test -n "$OUT" && set -- "$@" "$OUT"
+	exec "$@"
+fi
+test -z "$FSUUID" && FSUUID=`uuidgen -r`
+if test -n "$OUT"
+then
+	if test -b "$OUT"
+	then
+		RSIZE=`blockdev --getsize64 -- "$OUT"`
+	else
+		test -f "$OUT"
+		RSIZE=`stat -c %s -- "$OUT"`
+	fi
+	if test -n "$DEVSIZE"
+	then
+		test $DEVSIZE -le "$RSIZE"
+	else
+		DEVSIZE=$RSIZE
+	fi
+else
+	RSIZE=
+fi
+tempfile() {
+	mktemp -- "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX
+}
+T=`tempfile`; T2=`tempfile`; T3=`tempfile`
+cat << eof > "$T"
+1$HDR_KEY=$HDR_VAL
+1COMPATIBLE_VERSION=3
+1UUID=$FSUUID
+1LABEL=$FSLABEL
+2ACTUAL_VERSION=3
+3CREATED=`date -u +%s`
+eof
+striplevel=5
+size_est=${DEVSIZE:-0}
+while :
+do
+	exec 5> "$T2"
+	while IFS= read -r line
+	do
+		rest=${line#?}
+		test ${line%"$rest"} -ge $striplevel && continue
+		echo "$rest"
+	done < "$T" >& 5
+	echo "@$size_est+0=/EOF" >& 5
+	if test $striplevel -le 4
+	then
+		echo
+	else
+		echo END
+	fi >& 5
+	exec 5>& -
+	size=`stat -c %s -- "$T2"`
+	if test -z "$DEVSIZE"
+	then
+		test $size_est = $size && break
+		size_est=$size
+		continue
+	fi
+	test $size -le $DEVSIZE && break
+	striplevel=`expr $striplevel - 1`
+	test $striplevel -ge 2 && continue
+	echo "Minimum required filesystem size is $size bytes." >& 2
+	echo "It does not fit into the available $DEVSIZE bytes." >& 2
+	false || exit
+done
+if test -n "$OUT"
+then
+	dd if="$T2" of="$OUT" bs=$size count=1 conv=notrunc 2> /dev/null \
+	|| {
+		test ! -b "$T2"
+		test ! -f "$T2"
+		cat "$T2" > "$OUT"
+	}
+else
+	dd if="$T2" bs=$size count=1 conv=notrunc 2> /dev/null \
+	|| cat "$T2"
+	test -t 1 && echo "================" >& 2
+fi
+echo "Trivial FS creation successful." >& 2

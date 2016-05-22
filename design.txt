@@ -18,11 +18,11 @@ CREATED=<unixtime>
 @<offset1>+<size1>=<pathname1>
 @<offset2>+<size2>=<pathname2>
 ...
-EOF
+END
 
 Whitespace or empty lines are not allowed in the metadata area, except that whitespace (but no newline character) is allowed in file and volume label names.
 
-The first line is mandatory. It is used to identify the trivial file system as such. It could be used to identify an image file containing a trivial file system by the "file" utility. The UUID in that line is part of the signature and will never change. It is not to be confused with the "UUID="-line which represents the UUID of the filesystem instance.
+The first line is fixed. It is used to identify the trivial file system as such. It could be used to identify an image file containing a trivial file system by the "file" utility. The UUID in that line is part of the signature and will never change. It is not to be confused with the "UUID="-line which represents the UUID of the filesystem instance.
 
 The second line defines the version number of the metadata format which the reader must understand in order to parse the metadata successfully. It is a simple integer without leading zeros. The version number in the example above specifies the value implementers of THIS version of the specification must write when creating a compliant filesystem.
 
@@ -42,7 +42,7 @@ Additional entries may be defined in future revisions of the file format.
 
 The remaining lines describe only directory entries (which all start with "@"), and the whole metadata area stops once a line has been read which does not follow the syntax for a directory entry.
 
-By convention, that line will contain the text "EOF", but this is not actually required. Any line not conforming to a valid directory entry syntax terminates the metadata area.
+By convention, that line will contain the text "END", but this is not actually required. Any line not conforming to a valid directory entry syntax terminates the metadata area.
 
 After this area, the file contents area starts.
 
@@ -82,7 +82,7 @@ Future versions of TrivialFS might even add completely dynamic writing to and re
 
 There is no alignment requirement dictated by this specification; byte alignment of all structures is therefore possible. Of course, an implementation is also free to align <offset> offsets in any way deemed advantageous. Alignment does not change the way the TrivialFS metadata has to be parsed.
 
-The minimum size possible for a filesystem is 118 Bytes, which contains the mandatory header lines and an empty line (instead of the conventional "EOF") to terminate the metadata area.
+The minimum size possible for a filesystem is 118 Bytes, which contains the mandatory header lines and an empty line (instead of the conventional "END") to terminate the metadata area.
 
 The scan for a file name starts at the beginning of the metadata area; the first matching file will be returned as found.
 
