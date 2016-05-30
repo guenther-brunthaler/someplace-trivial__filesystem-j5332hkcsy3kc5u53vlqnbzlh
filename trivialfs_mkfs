@@ -17,7 +17,7 @@ HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 
 cleanup() {
 	local rc=$?
-	for t in "$T" "$T2" "$T3"
+	for t in "$T" "$T2"
 	do
 		test -n "$t" && rm -- "$t"
 	done
@@ -25,34 +25,11 @@ cleanup() {
 }
 
 set -e
-T=; T2=; T3=
+T=; T2=
 trap cleanup 0
 
-# "42", "42 B", "42 kB", "42 kiB", "42MB, "42GiB", "42TB", "42 PiB", ...
-parse_size() {
-	local num tx unit mult
-	num=`expr x"$1" : x'\(0\|[1-9][0-9]*\)'`
-	tx=${1#"$num"}
-	if test -n "$tx"
-	then
-		unit=`expr x"$tx" : x'[[:space:]]*\(\([kMGTPEZY]i\?\)\?B\)$'`
-		unit=${unit%?}
-		case $unit in
-			"") unit=B;;
-			*i) unit=${unit%?}; mult=1024;;
-			*) mult=1000
-		esac
-		unit=`echo $unit | tr BkMGTPEZY 012345678`
-		while test $unit != 0
-		do
-			tx=`expr $num '*' $mult`
-			test $tx -gt $num
-			num=$tx
-			unit=`expr $unit - 1 || :`
-		done
-	fi
-	echo $num
-}
+libdir=`dirname -- "$0"`/sh
+. "$libdir"/parse_bytecount-pgxdf9uct7ch4pzf5e2b4bn9f.sh
 
 FSUUID=
 FSLABEL=
@@ -65,7 +42,7 @@ do
 		u) FSUUID=$OPTARG;;
 		L | l) FSLABEL=$OPTARG;;
 		r | t) FSUUID=`uuidgen -$OPT`;;
-		s) DEVSIZE=`parse_size "$OPTARG"`;;
+		s) DEVSIZE=`parse_bytecount "$OPTARG"`;;
 		d) DUMP=y;;
 		*) fail
 	esac
@@ -102,7 +79,7 @@ fi
 tempfile() {
 	mktemp -- "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX
 }
-T=`tempfile`; T2=`tempfile`; T3=`tempfile`
+T=`tempfile`; T2=`tempfile`
 cat << eof > "$T"
 1$HDR_KEY=$HDR_VAL
 1COMPATIBLE_VERSION=3
