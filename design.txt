@@ -42,7 +42,7 @@ Additional entries may be defined in future revisions of the file format.
 
 The remaining lines describe only directory entries (which all start with "@"), and the whole metadata area stops once a line has been read which does not follow the syntax for a directory entry.
 
-By convention, that line will contain the text "END", but this is not actually required. Any line not conforming to a valid directory entry syntax terminates the metadata area.
+By convention, that line will contain the text "END", but this is not actually required. Any line not conforming to a valid directory entry syntax terminates the metadata area. (This applies to an empty line as well.)
 
 After this area, the file contents area starts.
 

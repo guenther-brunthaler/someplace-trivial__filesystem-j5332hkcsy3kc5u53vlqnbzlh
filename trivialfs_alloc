@@ -1,0 +1,312 @@
+#! /bin/sh
+HDR_KEY=TrivialFS
+HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
+COMPATIBLE_VERSION=3
+ACTUAL_VERSION=3
+
+# Allocates new files within an already-existing TrivialFS filesystem.
+#
+# Expects the path to a TrivialFS as the first argument, which may either be a
+# container file or a block device.
+#
+# If there are no more arguments, action commands are read from standard
+# input, one line per command. Otherwise, the remaining arguments represent
+# the action commands.
+#
+# An action command be specified as one of the following variants:
+#
+# * "@start_offset_incl+length=pathname"
+#
+# * "@start_offset_incl..@end_offset_incl=pathname"
+#
+# * "@start_offset_incl<@end_offset_excl=pathname"
+#
+# * "@end_offset_excl-length=pathname"
+#
+# * "+length=pathname"
+#
+# * "-length=pathname"
+#
+# The offsets and sizes are specified in bytes, but suffixes like B, kB, KiB,
+# MB, MiB etc. are allowed to multiply the values as bytes, kilobytes,
+# kibibytes etc. Only SI-units are supported and letter case must be correct.
+# Therefore, "MB", "kB" and "KiB" are valid units, but "mb", "KB", "kb" or
+# "kiB" are not.
+#
+# All the variants containing offsets specify an exact location and range size
+# for the file, relative to the first byte of the filesystem container.
+#
+# "+length" allocates the file after the first already-allocated file where
+# there is space enough. If there is not enough space anywhere beyond the
+# first already-allocated file, it will be allocated at the end of the free
+# space before the first allocated file. If there are no allocations yet, the
+# file is allocated directly after the TrivialFS metadata.
+#
+# "-length" allocates the file at the end of the last unused gap within the
+# already-allocated space which is large enough. If there are no allocations
+# yet, the file is allocated at the end of the container or block device.
+#
+# Note that pathnames use "/" as directory separators and must be absolute,
+# but must not start with a "/". Pathnames starting with a "/" are reserved
+# for special pseudo-pathnames which are used by TrivialFS manipulation tools
+# for private purposes. Such names will also be suppressed in listings.
+#
+# trivialfs_alloc version 2016.151
+#
+# Copyright (c) 2014-2016 Guenther Brunthaler. All rights reserved.
+# 
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
+
+cleanup() {
+	local rc=$?
+	$redir7 && 7<& -
+	$redir6 && 6>& -
+	$redir5 && 5>& -
+	test -n "$TD" && rm -rf -- "$TD"
+	test $rc = 0 || echo "${0##*/} failed!" >& 2
+}
+
+set -e
+redir5=false
+redir6=false
+redir7=false
+TD=
+trap cleanup 0
+
+libdir=`dirname -- "$0"`/sh
+. "$libdir"/parse_bytecount-pgxdf9uct7ch4pzf5e2b4bn9f.sh
+
+die() {
+	echo "$*" >& 2; false || exit
+}
+
+while getopts "" OPT
+do
+	case $OPT in
+		*) false || exit
+	esac
+done
+shift `expr $OPTIND - 1 || :`
+
+volume=$1; shift
+test -n "$volume"
+if test -b "$volume"
+then
+	maxsize=`blockdev --getsize64 -- "$volume"`
+	softmax=false
+else
+	test -f "$volume"
+	maxsize=`stat -c %s -- "$volume"`
+	softmax=true
+fi
+
+TD=`mktemp -d -- "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX`
+
+check_uint() {
+	expr x"$1" : x'[1-9][0-9]*$' \| x"$1" : x'0$' > /dev/null || false
+}
+
+# Parse a "@"-$line and split it.
+# Also override $maxsize from a pseudo-entry "/EOF"*.
+split_fline() {
+	local offset length path
+	path=${line#'@'}
+	length=${path%%=*}; path=${path#"$length="}
+	offset=${length%+*}; length=${length#"$offset"+}
+	check_uint "$offset"
+	check_uint "$length"
+	test x"@$offset+$length=$path" = x"$line"
+	case $path in
+		"/EOF"*)
+			if test $offset -lt $maxsize || $softmax
+			then
+				maxsize=$offset
+				softmax=false # May only shrink further.
+			fi
+	esac
+	echo "$offset $length $path"
+}
+
+{
+	hdr="$HDR_KEY=$HDR_VAL"; hlen=${#hdr}
+	echo "$hdr" > "$TD/needed"
+	dd bs=`expr $hlen + 1` count=1 of="$TD/header" 2> /dev/null
+	unset hdr hlen
+	if cmp -s "$TD"/needed "$TD/header"
+	then
+		rm "$TD"/needed
+	else
+		die "'$volume' does not look like a TrivialFS filesystem!"
+	fi
+	exec 5>> "$TD/header"; redir5=true
+	dst="$TD/files"; exec 6> "$dst"; redir6=true
+	LNO=2
+	while IFS= read -r line
+	do
+		if test $LNO = 2
+		then
+			cv=${line#COMPATIBLE_VERSION=}
+			if
+				test x"$cv" != x"$line" \
+				&& expr x"$cv" : x'[1-9][0-9]*$' > /dev/null
+			then
+				unset cv
+			else
+				die "Unsupported TrivialFS version!"
+			fi
+		fi
+		if expr x"$line" : x'[^=]\{1,\}=' > /dev/null
+		then
+			case $line in
+				"@"*) split_fline >& 6;;
+				*) printf '%s\n' "$line" >& 5
+			esac
+		else
+			printf '%s\n' "$line" > "$TD"/footer
+			break
+		fi
+		LNO=`expr $LNO + 1`
+	done
+	exec 6>& -; redir6=false
+	exec 5>& -; redir5=false
+} < "$volume"
+test -s "$TD"/footer || die "Incomplete TrivialFS metadata area!"
+
+swap_src_dst() {
+	local t
+	t=$src; src=$dst; dst=$t
+}
+
+src="${dst}_other"; swap_src_dst
+LC_NUMERIC=C LC_COLLATE=C sort -n "$src" > "$dst"; swap_src_dst
+> "$TD/earliest"
+
+# Complain about $cmd.
+syntax_error() {
+	die "Command '$cmd' has invalid syntax!"
+}
+
+# Verify $1 == $prefix as part of $cmd and that $offset and $length are uints.
+chk_prefix() {
+	check_uint "$offset" \
+	&& check_uint "$length" \
+	&& test x"$1" = x"$prefix" \
+	|| syntax_error
+}
+
+overlap() {
+	die "Command '$cmd' ($length bytes @ $offset)" \
+		"would overlap with existing TrivialFS file" \
+		"'$fpath' ($flength bytes @ $foffset)!"
+}
+
+process_cmd() {
+	local offset length path prefix
+	path=${cmd#*=}
+	test x"$path" != x"$cmd" || die "Missing pathname in command '$cmd'!"
+	prefix=${cmd%"=$path"}
+	offset=${prefix#'@'}
+	if test x"$offset" != x"$prefix"
+	then
+		case $offset in
+			*"+"*)
+				# * "@start_offset_incl+length"
+				length=${offset#*+}; offset=${offset%+*}
+				chk_prefix "@$offset+$length"
+				;;
+			*".."*)
+				# * "@start_offset_incl..@end_offset_incl"
+				length=${offset#*..}; offset=${offset%..*}
+				length=${length#'@'}
+				chk_prefix "@$offset..@$length"
+				expr $length '>=' $offset > /dev/null \
+					|| die "$length < $offset in '$cmd'!"
+				length=`expr $length + 1 - $offset`
+				;;
+			*"<"*)
+				# * "@start_offset_incl<@end_offset_excl"
+				length=${offset#*<}; offset=${offset%<*}
+				length=${length#'@'}
+				chk_prefix "@$offset<@$length"
+				expr $length '>=' $offset > /dev/null \
+					|| die "$length < $offset in '$cmd'!"
+				length=`expr $length - $offset || :`
+				;;
+			*"-"*)
+				# * "@end_offset_excl-length"
+				length=${offset#*-}; offset=${offset%-*}
+				chk_prefix "@$offset-$length"
+				expr $offset '>=' $length > /dev/null \
+					|| die "$length > $offset in '$cmd'!"
+				offset=`expr $offset - $length || :`
+				;;
+			*) die syntax_error
+		esac
+		end=`expr $offset + $length || :`
+		if test $end -gt $maxsize
+		then
+			die "Command '$cmd' ($length bytes @ $offset)" \
+				"would exceed the filesystem size of" \
+				"$maxsize bytes!"
+		fi
+		exec 7< "$src"; redir7=true
+		exec 5> "$dst"; redir5=true
+		not_yet_eof=false
+		while IFS=' ' read -r foffset flength fpath <& 7
+		do
+			#echo "READ $foffset $flength $fpath" >& 2
+			fend=`expr $foffset + $flength || :`
+			if test $fend -gt $offset
+			then
+				not_yet_eof=true
+				break
+			fi
+			echo "$foffset $flength $fpath" >& 5
+		done
+		test $foffset -le $offset && overlap
+		echo "$offset $length $path" >& 5
+		if $not_yet_eof
+		then
+			test $foffset -lt $end && overlap
+			echo "$foffset $flength $fpath" >& 5
+			while IFS=' ' read -r foffset flength fpath <& 7
+			do
+				#echo "READ $foffset $flength $fpath" >& 2
+				echo "$foffset $flength $fpath" >& 5
+			done
+		fi
+		exec 5>& -; redir5=false
+		exec 7<& -; redir7=false
+		swap_src_dst
+	else
+		case $offset in
+			'-'*)
+				# * "-length"
+				length=${offset#-}; offset=0
+				chk_prefix "-$length"
+				;;
+			'+'*)
+				# * "+length"
+				length=${offset#+}; offset=0
+				chk_prefix "+$length"
+				;;
+			*) syntax_error
+		esac
+	fi
+}
+
+if test $# = 0
+then
+	while IFS= read -r cmd
+	do
+		process_cmd
+	done
+else
+	for cmd
+	do
+		process_cmd
+	done
+fi
+echo result:
+cat "$src"

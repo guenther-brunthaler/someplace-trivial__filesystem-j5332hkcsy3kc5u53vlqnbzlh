@@ -8,7 +8,7 @@ HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 # given as the only argument, or to standard output if invoked without
 # arguments.
 #
-# trivialfs_gen version 2016.143
+# trivialfs_gen version 2016.165
 #
 # Copyright (c) 2014-2016 Guenther Brunthaler. All rights reserved.
 # 
@@ -47,7 +47,7 @@ do
 		*) false || exit
 	esac
 done
-shift `expr $OPTIND - 1`
+shift `expr $OPTIND - 1 || :`
 test -n "$1" && { OUT=$1; shift; }
 test $# = 0
 if test -n "$DUMP"
@@ -99,7 +99,7 @@ do
 		test ${line%"$rest"} -ge $striplevel && continue
 		echo "$rest"
 	done < "$T" >& 5
-	echo "@$size_est+0=/EOF" >& 5
+	echo "@$size_est+0=/EOFS" >& 5
 	if test $striplevel -le 4
 	then
 		echo
