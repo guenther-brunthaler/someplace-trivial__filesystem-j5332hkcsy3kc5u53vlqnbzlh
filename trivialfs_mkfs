@@ -44,7 +44,7 @@ do
 		r | t) FSUUID=`uuidgen -$OPT`;;
 		s) DEVSIZE=`parse_bytecount "$OPTARG"`;;
 		d) DUMP=y;;
-		*) fail
+		*) false || exit
 	esac
 done
 shift `expr $OPTIND - 1`

@@ -1,7 +1,7 @@
 # "42", "42 B", "42 kB", "42 kiB", "42MB, "42GiB", "42TB", "42 PiB", ...
 parse_bytecount() {
 	local num tx unit mult
-	num=`expr x"$1" : x'\(0\|[1-9][0-9]*\)'`
+	num=`expr x"$1" : '\(x0\|x[1-9][0-9]*\)'`; num=${num#x}
 	tx=${1#"$num"}
 	if test -n "$tx"
 	then
