@@ -220,10 +220,24 @@ process_cmd() {
 	local prefix not_yet_eof cmd
 	cmd=$1; path=${cmd#*=}
 	test x"$path" != x"$cmd" || die "Missing pathname in command '$cmd'!"
+	if test x"${path#/}" != x"$path"
+	then
+		die "Path name '$path' must be relative to the root of" \
+			"the TrivialFS and must not begin with a '/'!"
+	fi
 	prefix=${cmd%"=$path"}
 	offset=${prefix#'@'}
 	if test x"$offset" != x"$prefix"
 	then
+		while IFS=' ' read -r foffset flength fpath
+		do
+			if test x"$path" = x"$fpath"
+			then
+				die "Cannot allocate '$path' which already" \
+					"exists at byte offset $foffset with" \
+					"a length of $flength bytes!"
+			fi
+		done < "$src"
 		case $offset in
 			*"+"*)
 				# * "@start_offset_incl+length"
