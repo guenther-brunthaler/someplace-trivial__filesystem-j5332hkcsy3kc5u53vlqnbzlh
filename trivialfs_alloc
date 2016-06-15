@@ -76,20 +76,32 @@ redir7=false
 TD=
 trap cleanup 0
 
-libdir=`dirname -- "$0"`/sh
+owndir=`dirname -- "$0"`
+owndir=`readlink -f -- "$owndir"`
+test -d "$owndir"
+libdir=$owndir/sh
+test -d "$libdir"
 . "$libdir"/parse_bytecount-pgxdf9uct7ch4pzf5e2b4bn9f.sh
 
 die() {
 	echo "$*" >& 2; false || exit
 }
 
-while getopts "" OPT
+metadata_backup_file=
+dry_run=false
+while getopts nb: OPT
 do
 	case $OPT in
+		n) dry_run=true;;
+		b) metadata_backup_file=$OPTARG;;
 		*) false || exit
 	esac
 done
 shift `expr $OPTIND - 1 || :`
+
+fsize() {
+	stat -c %s -- "$1"
+}
 
 volume=$1; shift
 test -n "$volume"
@@ -99,7 +111,7 @@ then
 	softmax=false
 else
 	test -f "$volume"
-	maxsize=`stat -c %s -- "$volume"`
+	maxsize=`fsize "$volume"`
 	softmax=true
 fi
 
@@ -158,6 +170,7 @@ split_fline() {
 				die "Unsupported TrivialFS version!"
 			fi
 		fi
+		LNO=`expr $LNO + 1`
 		if expr x"$line" : x'[^=]\{1,\}=' > /dev/null
 		then
 			case $line in
@@ -168,7 +181,6 @@ split_fline() {
 			printf '%s\n' "$line" > "$TD"/footer
 			break
 		fi
-		LNO=`expr $LNO + 1`
 	done
 	exec 6>& -; redir6=false
 	exec 5>& -; redir5=false
@@ -353,5 +365,74 @@ else
 		process_cmd "$cmd"
 	done
 fi
-echo result:
-cat "$src"
+
+limit=$maxsize
+{
+	cat "$TD/header"
+	while IFS=' ' read -r offset length path
+	do
+		test $offset" -lt $limit" && limit=$offset
+		echo "@$offset+$length=$path"
+	done
+	cat "$TD/footer"
+} < "$src" > "$dst"
+metasize=`fsize "$dst"`
+swap_src_dst
+
+if $dry_run
+then
+	marker=`printf '%72s' x | tr -c u -`
+	cat << EOF >& 2
+All requested allocations have been processed without errors.
+
+A dry run has been requested - *not* updating metadata area.
+
+Here is the new metadata which would have been attempted to be updated
+otherwise (which might have failed if there was not enough space
+available in the metadata area):
+$marker
+EOF
+	cat "$src"
+	printf '%s\n' $marker >& 2
+	exit
+fi
+
+if test -n "$metadata_backup_file"
+then
+	mdbk=$metadata_backup_file
+else
+	mdbk=$dst
+fi
+head -n $LNO < "$volume" | gzip -9c > "$mdbk"
+bksize=`fsize "$mdbk"`
+if test -n "$metadata_backup_file"
+then
+	needed=0
+else
+	needed=$bksize
+fi
+needed=`expr $needed + $metasize`
+
+if test $needed -gt $limit
+then
+	missing=`expr $needed - $limit`
+	msg="Insufficient space to update metadata! $needed bytes are required"
+	msg="$msg, but only $limit bytes are available. $missing bytes are"
+	msg="$msg therefore missing."
+	if test -z "$metadata_backup_file" && test $missing -le $bksize
+	then
+		msg="$msg Consider using option -b to specify an external file"
+		msg="$msg for backing up the old metadata. This would"
+		msg="$msg temporarily save $bksize in the metadata area, which"
+		msg="$msg would leave enough space for the update to succeed."
+	fi
+	die "$msg"
+fi
+
+if test -z "$metadata_backup_file"
+then
+	"$owndir"/offset_io write $bksize bytes '@' $metasize into "$volume" \
+		< "$mdbk"
+fi
+
+"$owndir"/offset_io write $metasize bytes '@' 0 into "$volume" < "$src"
