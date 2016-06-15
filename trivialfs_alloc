@@ -3,6 +3,7 @@ HDR_KEY=TrivialFS
 HDR_VAL=80a29844-f5e3-11e3-b1c1-b827eb896db5
 COMPATIBLE_VERSION=3
 ACTUAL_VERSION=3
+default_metadata_max_bytes=4096
 
 # Allocates new files within an already-existing TrivialFS filesystem.
 #
@@ -40,7 +41,8 @@ ACTUAL_VERSION=3
 # there is space enough. If there is not enough space anywhere beyond the
 # first already-allocated file, it will be allocated at the end of the free
 # space before the first allocated file. If there are no allocations yet, the
-# file is allocated directly after the TrivialFS metadata.
+# command "@$default_metadata_max_bytes+$length" will be used instead, where
+# $length is the length specified for the original command.
 #
 # "-length" allocates the file at the end of the last unused gap within the
 # already-allocated space which is large enough. If there are no allocations
@@ -202,8 +204,9 @@ overlap() {
 }
 
 process_cmd() {
-	local offset length path prefix
-	path=${cmd#*=}
+	local offset foffset length flength path fpath end fend
+	local prefix not_yet_eof cmd
+	cmd=$1; path=${cmd#*=}
 	test x"$path" != x"$cmd" || die "Missing pathname in command '$cmd'!"
 	prefix=${cmd%"=$path"}
 	offset=${prefix#'@'}
@@ -255,7 +258,6 @@ process_cmd() {
 		not_yet_eof=false
 		while IFS=' ' read -r foffset flength fpath <& 7
 		do
-			#echo "READ $foffset $flength $fpath" >& 2
 			fend=`expr $foffset + $flength || :`
 			if test $fend -gt $offset
 			then
@@ -272,7 +274,6 @@ process_cmd() {
 			echo "$foffset $flength $fpath" >& 5
 			while IFS=' ' read -r foffset flength fpath <& 7
 			do
-				#echo "READ $foffset $flength $fpath" >& 2
 				echo "$foffset $flength $fpath" >& 5
 			done
 		fi
@@ -280,19 +281,63 @@ process_cmd() {
 		exec 7<& -; redir7=false
 		swap_src_dst
 	else
+		local ascending
 		case $offset in
 			'-'*)
 				# * "-length"
 				length=${offset#-}; offset=0
 				chk_prefix "-$length"
+				ascending=false
 				;;
 			'+'*)
 				# * "+length"
 				length=${offset#+}; offset=0
 				chk_prefix "+$length"
+				ascending=true
 				;;
 			*) syntax_error
 		esac
+		not_yet_eof=false
+		offset=; fend=
+		while IFS=' ' read -r foffset flength fpath
+		do
+			if
+				test -n "$fend" \
+				&& expr $fend + $length '<=' $foffset \
+					> /dev/null
+			then
+				if $ascending
+				then
+					not_yet_eof=true
+					break
+				fi
+				offset=$foffset
+			fi
+			fend=`expr $foffset + $flength || :`
+		done < "$src"
+		if $not_yet_eof
+		then
+			process_cmd "@$fend+$length=$path"
+		elif $ascending
+		then
+			if IFS=' ' read -r foffset flength fpath < "$src"
+			then
+				process_cmd "@$foffset-$length=$path"
+			else
+				offset=$default_metadata_max_byte
+				process_cmd "@$offset+$length=$path"
+			fi
+		elif test -n "$offset"
+		then
+			process_cmd "@$offset-$length=$path"
+		else
+			if IFS=' ' read -r foffset flength fpath < "$src"
+			then
+				process_cmd "@$foffset-$length=$path"
+			else
+				process_cmd "@$maxsize-$length=$path"
+			fi
+		fi
 	fi
 }
 
@@ -300,12 +345,12 @@ if test $# = 0
 then
 	while IFS= read -r cmd
 	do
-		process_cmd
+		process_cmd "$cmd"
 	done
 else
 	for cmd
 	do
-		process_cmd
+		process_cmd "$cmd"
 	done
 fi
 echo result:
