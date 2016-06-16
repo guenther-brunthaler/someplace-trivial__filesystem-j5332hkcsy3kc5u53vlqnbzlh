@@ -249,7 +249,7 @@ process_cmd() {
 				length=${offset#*..}; offset=${offset%..*}
 				length=${length#'@'}
 				chk_prefix "@$offset..@$length"
-				expr $length '>=' $offset > /dev/null \
+				test $length -ge $offset \
 					|| die "$length < $offset in '$cmd'!"
 				length=`expr $length + 1 - $offset`
 				;;
@@ -258,7 +258,7 @@ process_cmd() {
 				length=${offset#*<}; offset=${offset%<*}
 				length=${length#'@'}
 				chk_prefix "@$offset<@$length"
-				expr $length '>=' $offset > /dev/null \
+				test $length -ge $offset \
 					|| die "$length < $offset in '$cmd'!"
 				length=`expr $length - $offset || :`
 				;;
@@ -266,7 +266,7 @@ process_cmd() {
 				# * "@end_offset_excl-length"
 				length=${offset#*-}; offset=${offset%-*}
 				chk_prefix "@$offset-$length"
-				expr $offset '>=' $length > /dev/null \
+				test $offset -ge $length \
 					|| die "$length > $offset in '$cmd'!"
 				offset=`expr $offset - $length || :`
 				;;
