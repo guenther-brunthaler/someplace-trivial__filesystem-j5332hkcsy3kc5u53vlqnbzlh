@@ -1,61 +1,83 @@
 #! /bin/false
 # Simple resource list framework.
 
-# $1: Name of a variable containing a (possibly empty) space-separated list of
-# words. Any remaining arguments must be words which will be added to that
-# list.
-addL() {
-	local n_71aayy1k5ekga7g1956ij9wg4 c_71aayy1k5ekga7g1956ij9wg4 \
-		w_71aayy1k5ekga7g1956ij9wg4
-	n_71aayy1k5ekga7g1956ij9wg4=$1; shift
-	eval "c_71aayy1k5ekga7g1956ij9wg4=\$$n_71aayy1k5ekga7g1956ij9wg4"
-	for w_71aayy1k5ekga7g1956ij9wg4
+# This global variable contains the current resource list. It is initially
+# empty. This is a private variable of the framework. Application code does
+# not need to meddle with it, although it might be helpful to display its
+# contents when debugging, for showing which resources are currently active.
+rlist=
+
+# Add resources to the end of the global resource list. Resources are shell
+# commands without arguments which will be executed (in reverse list order)
+# when the resource list is released. It is also possible to add labels using
+# the syntax '=label", where "label" is the name of the label. The current
+# position where the next resource will be inserted into the resource list can
+# be changed by specifying arguments '<label' or 'label>' where "label" is an
+# already existing label in the list. This will change the insertion position
+# before or after the label entry, respectively. Label names should be unique
+# although this is not required: When searching for a label, only the last
+# entry of the whole list with a matching name will be found. An empty string
+# is also a valid label name.
+alloc() {
+	local head tail cmd
+	head=$rlist${rlist:+' '}; tail=
+	for cmd
 	do
-		c_71aayy1k5ekga7g1956ij9wg4\
-=$c_71aayy1k5ekga7g1956ij9wg4${c_71aayy1k5ekga7g1956ij9wg4:+ }\
-$w_71aayy1k5ekga7g1956ij9wg4
+		case $cmd in
+			'<'*)
+				cmd="=${cmd#?} "
+				tail=$head$tail
+				head=${tail%"$cmd"*}
+				tail=${tail#"$head"}
+				;;
+			*'>')
+				cmd="=${cmd%?} "
+				head=$head$tail
+				tail=${head##*"$cmd"}
+				head=${head%"$tail"}
+				;;
+			*) head=$head$cmd' '
+		esac
 	done
-	eval "$n_71aayy1k5ekga7g1956ij9wg4=\$c_71aayy1k5ekga7g1956ij9wg4"
+	head=$head$tail
+	rlist=${head%' '}
 }
 
-# $1: The name of a variable containing a space-separated list of words. The
-# following steps will be repeated until the list becomes empty: If the last
-# word of the list is the '$'-prefixed name of an empty variable, it will be
-# removed from the list. Otherwise, if it is the '$'-prefixed name of a
-# non-empty variable, the contents of the variable will be moved from that
-# variable to the end of the list. Otherwise, the last word must be the name
-# of a command, which will be removed from the list and then be executed.
+# Deallocate resources of the global resource list by executing the
+# parameterless commands in the list in reverse list order. Label entries
+# start with "=" and act as no-ops. Every command will be removed from the
+# list immediately before it is executed. Without any argument, all resources
+# are freed. With argument 'label>', deallocation stops when a label with name
+# "label" is the last entry of the resource list. With argument '=label',
+# deallocation stops once the entry for a label with name "label" has been
+# removed from the list. Note that the empty string is also a valid label
+# name.
 release() {
-	local c_71aayy1k5ekga7g1956ij9wg4 e_71aayy1k5ekga7g1956ij9wg4 \
-		n_71aayy1k5ekga7g1956ij9wg4 v_71aayy1k5ekga7g1956ij9wg4
-	while :
+	local stop entry
+	case $1 in
+		'') stop=;;
+		*'>') stop="=${1%?}";;
+		'='*) stop=$1;;
+		*) exit 99
+	esac
+	while test -n "$rlist"
 	do
-		eval "c_71aayy1k5ekga7g1956ij9wg4=\$$1"
-		test -z "$c_71aayy1k5ekga7g1956ij9wg4" && break
-		e_71aayy1k5ekga7g1956ij9wg4\
-=${c_71aayy1k5ekga7g1956ij9wg4##*' '}
-		n_71aayy1k5ekga7g1956ij9wg4=${e_71aayy1k5ekga7g1956ij9wg4#'$'}
-		if test x"$n_71aayy1k5ekga7g1956ij9wg4" \
-			!= x"$e_71aayy1k5ekga7g1956ij9wg4"
+		entry=${rlist##*' '}
+		# Strange dash bug (?): Change below to x"${1%'>'}" and it
+		# won't work any more! No idea why...
+		if test x"$entry" = x"$stop" && test x"${1%">"}" != x"$1"
 		then
-			eval v_71aayy1k5ekga7g1956ij9wg4=\
-\$$n_71aayy1k5ekga7g1956ij9wg4
-			if test -n "$v_71aayy1k5ekga7g1956ij9wg4"
-			then
-				eval $n_71aayy1k5ekga7g1956ij9wg4=
-				eval "$1=\$$1"'" "$v_71aayy1k5ekga7g1956ij9wg4'
-				continue
-			fi
-		else
-			"$e_71aayy1k5ekga7g1956ij9wg4"
+			return
 		fi
-		if test x"$e_71aayy1k5ekga7g1956ij9wg4" \
-			!= x"$c_71aayy1k5ekga7g1956ij9wg4"
+		if test x"$entry" != x"$rlist"
 		then
-			eval $1\
-='${c_71aayy1k5ekga7g1956ij9wg4%" $e_71aayy1k5ekga7g1956ij9wg4"}'
+			rlist=${rlist%" $entry"}
 		else
-			eval $1=
+			rlist=
 		fi
+		case $entry in
+			'='*) test x"$entry" = x"$stop" && return;;
+			*) "$entry" # Must be a command to be executed.
+		esac
 	done
 }

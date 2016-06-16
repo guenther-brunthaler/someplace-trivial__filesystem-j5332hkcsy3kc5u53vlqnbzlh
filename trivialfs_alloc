@@ -60,28 +60,20 @@ default_metadata_max_bytes=4096
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
 
+set -e
+
+dir0=`dirname -- "$0"`; dir0=`readlink -f -- "$dir0"`; test -d "$dir0"
+libdir=$dir0/sh; test -d "$libdir"
+
+. "$libdir"/parse_bytecount-pgxdf9uct7ch4pzf5e2b4bn9f.sh
+. "$libdir"/rlist-71aayy1k5ekga7g1956ij9wg4.sh
+
 cleanup() {
 	local rc=$?
-	$redir7 && 7<& -
-	$redir6 && 6>& -
-	$redir5 && 5>& -
-	test -n "$TD" && rm -rf -- "$TD"
+	release
 	test $rc = 0 || echo "${0##*/} failed!" >& 2
 }
-
-set -e
-redir5=false
-redir6=false
-redir7=false
-TD=
 trap cleanup 0
-
-owndir=`dirname -- "$0"`
-owndir=`readlink -f -- "$owndir"`
-test -d "$owndir"
-libdir=$owndir/sh
-test -d "$libdir"
-. "$libdir"/parse_bytecount-pgxdf9uct7ch4pzf5e2b4bn9f.sh
 
 die() {
 	echo "$*" >& 2; false || exit
@@ -115,7 +107,11 @@ else
 	softmax=true
 fi
 
+tmpdir() {
+	rm -rf -- "$TD"
+}
 TD=`mktemp -d -- "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX`
+alloc tmpdir
 
 check_uint() {
 	expr x"$1" : x'[1-9][0-9]*$' \| x"$1" : x'0$' > /dev/null || false
@@ -142,6 +138,18 @@ split_fline() {
 	echo "$offset $length $path"
 }
 
+redir5() {
+	5>& -
+}
+
+redir6() {
+	6>& -
+}
+
+redir7() {
+	7<& -
+}
+
 {
 	hdr="$HDR_KEY=$HDR_VAL"; hlen=${#hdr}
 	echo "$hdr" > "$TD/needed"
@@ -153,8 +161,8 @@ split_fline() {
 	else
 		die "'$volume' does not look like a TrivialFS filesystem!"
 	fi
-	exec 5>> "$TD/header"; redir5=true
-	dst="$TD/files"; exec 6> "$dst"; redir6=true
+	exec 5>> "$TD/header"; alloc '=' redir5
+	dst="$TD/files"; exec 6> "$dst"; alloc redir6
 	LNO=2
 	while IFS= read -r line
 	do
@@ -182,8 +190,7 @@ split_fline() {
 			break
 		fi
 	done
-	exec 6>& -; redir6=false
-	exec 5>& -; redir5=false
+	release '='
 } < "$volume"
 test -s "$TD"/footer || die "Incomplete TrivialFS metadata area!"
 
@@ -279,8 +286,8 @@ process_cmd() {
 				"would exceed the filesystem size of" \
 				"$maxsize bytes!"
 		fi
-		exec 7< "$src"; redir7=true
-		exec 5> "$dst"; redir5=true
+		exec 7< "$src"; alloc '=' redir7
+		exec 5> "$dst"; alloc redir5
 		not_yet_eof=false
 		while IFS=' ' read -r foffset flength fpath <& 7
 		do
@@ -303,8 +310,7 @@ process_cmd() {
 				echo "$foffset $flength $fpath" >& 5
 			done
 		fi
-		exec 5>& -; redir5=false
-		exec 7<& -; redir7=false
+		release '='
 		swap_src_dst
 	else
 		local ascending
@@ -445,8 +451,8 @@ fi
 
 if test -z "$metadata_backup_file"
 then
-	"$owndir"/offset_io write $bksize bytes '@' $metasize into "$volume" \
+	"$dir0"/offset_io write $bksize bytes '@' $metasize into "$volume" \
 		< "$mdbk"
 fi
 
-"$owndir"/offset_io write $metasize bytes '@' 0 into "$volume" < "$src"
+"$dir0"/offset_io write $metasize bytes '@' 0 into "$volume" < "$src"
