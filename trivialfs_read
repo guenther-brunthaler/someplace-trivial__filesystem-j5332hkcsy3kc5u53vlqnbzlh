@@ -32,11 +32,11 @@ write_start_to_stop() {
 }
 
 trap 'echo "$0 Failed!" >& 2' 0
-raw=false
-while getopts r opt
+dynamic=false
+while getopts d opt
 do
 	case $opt in
-		r) raw=true;;
+		d) dynamic=true;;
 		*) false || exit
 	esac
 done
@@ -46,7 +46,7 @@ read -r file_start file_size volume_path
 
 validate_uint "$file_start"
 validate_uint "$file_size"
-if $raw
+if $dynamic
 then
 	# Raw TFS files use the whole file space as recorded in the FS
 	# metadata. Normal TFS files have "\n$actual_size" as their last

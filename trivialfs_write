@@ -1,17 +1,23 @@
 #! /bin/sh
-# Expects the output of trivialfs_file, broken down into words, as its initial
-# arguments, optionally being followed by the name of a local file or block
-# device. It then copies the contents of the whole file or block device into
-# the described trivialfs file. If no file or block device has been specified,
-# the data to be written is read from standard input instead.
+# Expects the output of trivialfs_file at the beginning of standard input,
+# describing the allocated space of a file within a TrivialFS volume.
 #
-# If the -r option is used, the data provided to be written must not be larger
+# Without further arguments, copies the remaining data from standard input as
+# the new contents into the TrivialFS file. If a file or block device is
+# specified as a single argument, the new contents will be copied from that
+# file or block device rather than from standard input.
+#
+# Without the -d option, the data provided to be written must not be larger
 # than the size of the trivialfs file, and its previous contents will be
-# overwritten starting with the first byte of the file.
+# overwritten starting with the first byte of the file up to the last byte of
+# input provided.
 #
-# Without the -r option, the size of the new data will be written after a
+# When the -d option is used, dynamic file sizes up to the allocated size of
+# the file are supported. In this case, the payload data overwrites the
+# beginning of the allocates space as without the -d option. However, in
+# addition to that, the size of the new payload data will be written after a
 # newline character as an ASCII decimal number as the last bytes of the
-# trivialfs file. The new data must leave enough unused space for this purpose
+# TrivialFS file. The new data must leave enough unused space for this purpose
 # after the payload data to be written.
 #
 # trivialfs_write version 2016.175
@@ -32,18 +38,17 @@ libdir=$dir0/sh; test -d "$libdir"
 . "$libdir"/fsize-4rdwih8qv64bnb5wvizl2l61s.sh
 . "$libdir"/validate_uint-r29t167e1xmvyk7trebvq0l9y.sh
 
-trap 'echo "$0 Failed!" >& 2' 0
-raw=false
-while getopts r opt
+raw=true
+while getopts d opt
 do
 	case $opt in
-		r) raw=true;;
+		d) raw=false;;
 		*) false || exit
 	esac
 done
 shift `expr $OPTIND - 1 || :`
 
-file_start=$1; file_size=$2; volume_path=$3; shift 3
+read -r file_start file_size volume_path
 validate_uint "$file_start"
 validate_uint "$file_size"
 test -e "$volume_path"
@@ -94,5 +99,7 @@ then
 else
 	printf %s "$szsuffix" \
 	| "$dir0"/offset_io -M $max_blocksz \
-		write $outsize bytes '@' $file_start into "$volume_path"
+		write $szovh bytes '@' `
+			expr $file_start + $file_size - $szovh
+		` into "$volume_path"
 fi
