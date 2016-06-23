@@ -1,6 +1,9 @@
 #! /bin/false
 # Simple resource list framework.
 
+# Indicate that this shell snippet has been included.
+have_71aayy1k5ekga7g1956ij9wg4=true
+
 # This global variable contains the current resource list. It is initially
 # empty. This is a private variable of the framework. Application code does
 # not need to meddle with it, although it might be helpful to display its

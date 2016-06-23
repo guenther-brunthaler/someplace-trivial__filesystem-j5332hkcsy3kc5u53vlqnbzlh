@@ -1,3 +1,6 @@
+#! /bin/false
+have_pgxdf9uct7ch4pzf5e2b4bn9f=true
+
 # "42", "42 B", "42 kB", "42 kiB", "42MB, "42GiB", "42TB", "42 PiB", ...
 parse_bytecount() {
 	local num tx unit mult

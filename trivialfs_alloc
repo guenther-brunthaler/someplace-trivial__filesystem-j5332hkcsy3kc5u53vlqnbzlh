@@ -62,22 +62,14 @@ default_metadata_max_bytes=4096
 
 set -e
 
+# a9hpguh5ddnq25ycsf7hiq5kj {
 dir0=`dirname -- "$0"`; dir0=`readlink -f -- "$dir0"`; test -d "$dir0"
 libdir=$dir0/sh; test -d "$libdir"
-
+# } a9hpguh5ddnq25ycsf7hiq5kj 
+. "$libdir"/cleanup-37yusympssv3vb63uavsipr7u.sh
+. "$libdir"/fsize-4rdwih8qv64bnb5wvizl2l61s.sh
 . "$libdir"/parse_bytecount-pgxdf9uct7ch4pzf5e2b4bn9f.sh
-. "$libdir"/rlist-71aayy1k5ekga7g1956ij9wg4.sh
-
-cleanup() {
-	local rc=$?
-	release
-	test $rc = 0 || echo "${0##*/} failed!" >& 2
-}
-trap cleanup 0
-
-die() {
-	echo "$*" >& 2; false || exit
-}
+. "$libdir"/validate_uint-r29t167e1xmvyk7trebvq0l9y.sh
 
 metadata_backup_file=
 dry_run=false
@@ -90,10 +82,6 @@ do
 	esac
 done
 shift `expr $OPTIND - 1 || :`
-
-fsize() {
-	stat -c %s -- "$1"
-}
 
 volume=$1; shift
 test -n "$volume"
@@ -113,10 +101,6 @@ tmpdir() {
 TD=`mktemp -d -- "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX`
 alloc tmpdir
 
-check_uint() {
-	expr x"$1" : x'[1-9][0-9]*$' \| x"$1" : x'0$' > /dev/null || false
-}
-
 # Parse a "@"-$line and split it.
 # Also override $maxsize from a pseudo-entry "/EOF"*.
 split_fline() {
@@ -124,8 +108,8 @@ split_fline() {
 	path=${line#'@'}
 	length=${path%%=*}; path=${path#"$length="}
 	offset=${length%+*}; length=${length#"$offset"+}
-	check_uint "$offset"
-	check_uint "$length"
+	validate_uint "$offset"
+	validate_uint "$length"
 	test x"@$offset+$length=$path" = x"$line"
 	case $path in
 		"/EOF"*)
@@ -209,8 +193,8 @@ syntax_error() {
 
 # Verify $1 == $prefix as part of $cmd and that $offset and $length are uints.
 chk_prefix() {
-	check_uint "$offset" \
-	&& check_uint "$length" \
+	validate_uint "$offset" \
+	&& validate_uint "$length" \
 	&& test x"$1" = x"$prefix" \
 	|| syntax_error
 }

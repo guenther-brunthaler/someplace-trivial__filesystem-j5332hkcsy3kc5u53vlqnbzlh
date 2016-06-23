@@ -4,78 +4,115 @@
 # output. Arguments can further restrict output. See the comments in the
 # large "case" statement below for an explanation of supported arguments.
 #
-# trivialfs_read version 14.172
+# trivialfs_read version 2016.175
 #
-# (c) 2014 by Guenther Brunthaler.
+# Copyright (c) 2016 - 2016 Guenther Brunthaler. All rights reserved.
+#
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
 
+set -e
+
+# a9hpguh5ddnq25ycsf7hiq5kj {
+dir0=`dirname -- "$0"`; dir0=`readlink -f -- "$dir0"`; test -d "$dir0"
+libdir=$dir0/sh; test -d "$libdir"
+# } a9hpguh5ddnq25ycsf7hiq5kj 
+. "$libdir"/validate_uint-r29t167e1xmvyk7trebvq0l9y.sh
+
 write_from_to() {
-	# Writes data in 4 MiB blocks and -alignment. Reduces block size in
-	# steps of 4 bits if necessary, and use byte-alignment as a last
-	# resort. Unaligned blocks are split and written separately.
-	set -- "$@" 1 end
-	while :
-	do
-		ns=`expr $s '*' 16`
-		nb=`expr '(' $b + 15 ')' / 16 || :`; ne=`expr $e / 16 || :`
-		
-	done
+	# Writes data in blocks up to 4 MiB in size.
+	"$dir0"/offset_io -M $four_MiB \
+		read '@' $start stop '@' $stop from "$volume_path"
 }
+four_MiB=`expr 4 \* 1024 \* 1024`
 
 write_start_to_stop() {
 	write_from_to $start $stop
 	start=$stop
 }
 
-set -e
-trap 'echo "Failed!" >& 2' 0
-! getopts "" OPT
+trap 'echo "$0 Failed!" >& 2' 0
+raw=false
+while getopts r opt
+do
+	case $opt in
+		r) raw=true;;
+		*) false || exit
+	esac
+done
+shift `expr $OPTIND - 1 || :`
 
-read -r FILE_START FILE_SIZE VOLUME_PATH
-start=$FILE_START
+read -r file_start file_size volume_path
+
+validate_uint "$file_start"
+validate_uint "$file_size"
+if $raw
+then
+	# Raw TFS files use the whole file space as recorded in the FS
+	# metadata. Normal TFS files have "\n$actual_size" as their last
+	# bytes. Assuming file sizes restricted to 64 bit, the file size
+	# specification suffix cannot be larger than 1 + ceiling(log10(2 ^ 64
+	# - 1)) == 21 bytes.
+	sizeinfo_bytes=21
+	test $file_size -lt $sizeinfo_bytes && sizeinfo_bytes=$file_size
+	nfsz=`
+		"$dir0"/offset_io read $sizeinfo_bytes bytes '@' \`
+			expr $file_start + $file_size - $sizeinfo_bytes
+		\` from "$volume_path"
+	`
+	nl=`printf '\n:'`; nl=${nl%?}
+	nfsz=`
+		LC_COLLATE=C expr x"$nfsz" : x".*$nl"'\([0-9][0-9]*\)$'
+	`
+	validate_uint "$nfsz"
+	test $nfsz -le $file_size
+	file_size=$nfsz
+	unset sizeinfo_bytes nfsz nl
+fi
+
+start=$file_start
 stop=
 while test $# != 0
 do
 	# Process command line arguments.
 	#
 	# Initially, the current position is set to the first byte of the
-	# file, and the output condition is set.
+	# file, and the output condition is enabled.
 	#
 	# After the last argument has been processed (or immediately if there
-	# are no arguments) and if the output condition is also set, the bytes
+	# are no arguments) and if the output condition is enabled, the bytes
 	# from the current position until EOF will be output.
 	case $1 in
 		"@-"[0-9]*)
 			# "@-N" sets position N bytes backwards relative to
-			# EOF and sets the output condition.
+			# EOF and enables the output condition.
 			n=${1#??}
-			test $n -gt $FILE_SIZE && n=$FILE_SIZE
-			start=`expr $FILE_START + $FILE_SIZE - $n || :`
+			test $n -gt $file_size && n=$file_size
+			start=`expr $file_start + $file_size - $n || :`
 			stop=
 			;;
 		"@"[0-9]*)
 			# "@N" sets position N bytes after first byte of file
-			# and sets the output condition.
+			# and enables the output condition.
 			n=${1#?}
-			test $n -gt $FILE_SIZE && n=$FILE_SIZE
-			start=`expr $FILE_START + $n || :`
+			test $n -gt $file_size && n=$file_size
+			start=`expr $file_start + $n || :`
 			stop=
 			;;
 		"-"[0-9]*)
 			# "-N" sets position N bytes before current position
-			# and sets the output condition.
+			# and enables the output condition.
 			n=${1#?}
-			t=`expr $start - $FILE_START || :`
+			t=`expr $start - $file_start || :`
 			test $n -gt $t && n=$t
 			start=`expr $start - $n || :`
 			stop=
 			;;
 		"+"[0-9]*)
 			# "+N" sets position N bytes after current position
-			# and sets the output condition.
+			# and enables the output condition.
 			n=${1#?}
-			t=`expr $FILE_START + $FILE_SIZE - $start || :`
+			t=`expr $file_start + $file_size - $start || :`
 			test $n -gt $t && n=$t
 			start=`expr $start + $n || :`
 			stop=
@@ -83,9 +120,9 @@ do
 		"="[0-9]*)
 			# "=N" outputs N bytes starting at the current
 			# position, advancing it accordingly. Then the output
-			# condition is unset.
+			# condition is disabled.
 			n=${1#?}
-			t=`expr $FILE_START + $FILE_SIZE - $start || :`
+			t=`expr $file_start + $file_size - $start || :`
 			test $n -gt $t && n=$t
 			stop=`expr $start + $n || :`
 			write_start_to_stop
@@ -99,8 +136,9 @@ do
 			;;
 		";"*)
 			# ";string" annotates output by injecting the string
-			# into the output. Has no effect on the current
-			# position. Make sure to shell-escape ';' properly.
+			# with no additional newline character into the
+			# output. Has no effect on the current position. Make
+			# sure to shell-escape ';' properly.
 			s=${1#?}
 			printf '%s' "$s"
 			;;
@@ -110,7 +148,7 @@ do
 done
 if test -z "$stop"
 then
-	stop=`expr $FILE_START + $FILE_SIZE || :`
+	stop=`expr $file_start + $file_size || :`
 	write_start_to_stop
 fi
 
