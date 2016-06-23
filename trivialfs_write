@@ -1,0 +1,98 @@
+#! /bin/sh
+# Expects the output of trivialfs_file, broken down into words, as its initial
+# arguments, optionally being followed by the name of a local file or block
+# device. It then copies the contents of the whole file or block device into
+# the described trivialfs file. If no file or block device has been specified,
+# the data to be written is read from standard input instead.
+#
+# If the -r option is used, the data provided to be written must not be larger
+# than the size of the trivialfs file, and its previous contents will be
+# overwritten starting with the first byte of the file.
+#
+# Without the -r option, the size of the new data will be written after a
+# newline character as an ASCII decimal number as the last bytes of the
+# trivialfs file. The new data must leave enough unused space for this purpose
+# after the payload data to be written.
+#
+# trivialfs_write version 2016.175
+#
+# Copyright (c) 2016 Guenther Brunthaler. All rights reserved.
+#
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
+
+set -e
+max_blocksz=`expr 4 \* 1024 \* 1024`
+
+# a9hpguh5ddnq25ycsf7hiq5kj {
+dir0=`dirname -- "$0"`; dir0=`readlink -f -- "$dir0"`; test -d "$dir0"
+libdir=$dir0/sh; test -d "$libdir"
+# } a9hpguh5ddnq25ycsf7hiq5kj 
+. "$libdir"/cleanup-37yusympssv3vb63uavsipr7u.sh
+. "$libdir"/fsize-4rdwih8qv64bnb5wvizl2l61s.sh
+. "$libdir"/validate_uint-r29t167e1xmvyk7trebvq0l9y.sh
+
+trap 'echo "$0 Failed!" >& 2' 0
+raw=false
+while getopts r opt
+do
+	case $opt in
+		r) raw=true;;
+		*) false || exit
+	esac
+done
+shift `expr $OPTIND - 1 || :`
+
+file_start=$1; file_size=$2; volume_path=$3; shift 3
+validate_uint "$file_start"
+validate_uint "$file_size"
+test -e "$volume_path"
+
+if test $# = 0
+then
+	test $# = 0
+	tfile() {
+		rm -- "$src"
+	}
+	src=`mktemp "${TMPDIR:-/tmp}/${0##*/}.XXXXXXXXXX"`
+	alloc tfile
+	cat > "$src"
+else
+	src=$1; shift
+	test $# = 0
+	if test ! -f "$src"
+	then
+		test -b "$src"
+	fi
+fi
+if test -b "$src"
+then
+	outsize=`blockdev --getsize64 -- "$src"`
+else
+	outsize=`fsize "$src"`
+fi
+validate_uint "$outsize"
+if $raw
+then
+	szovh=0
+else
+	szsuffix=`printf '\n%u' $outsize`
+	szovh=${#szsuffix}
+fi
+needed=`expr $outsize + $szovh || :`
+if test $file_size -lt $needed
+then
+	die "Insufficient space in allocated TrivialFS file: $needed bytes" \
+		"would be needed but only $file_size bytes are allocated!"
+fi
+"$dir0"/offset_io -M $max_blocksz \
+	write $outsize bytes '@' $file_start into "$volume_path" \
+	< "$src"
+if $raw
+then
+	:
+else
+	printf %s "$szsuffix" \
+	| "$dir0"/offset_io -M $max_blocksz \
+		write $outsize bytes '@' $file_start into "$volume_path"
+fi
