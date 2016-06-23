@@ -201,7 +201,6 @@ swap_src_dst() {
 
 src="${dst}_other"; swap_src_dst
 LC_NUMERIC=C LC_COLLATE=C sort -n "$src" > "$dst"; swap_src_dst
-> "$TD/earliest"
 
 # Complain about $cmd.
 syntax_error() {

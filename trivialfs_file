@@ -5,45 +5,47 @@
 # by a single ASCII SPACE. If only a single argument is provided, it reads the
 # volume path name from standard input.
 #
-# trivialfs_file version 14.172
+# trivialfs_file version 2016.175
 #
-# (c) 2014 by Guenther Brunthaler.
+# Copyright (c) 2014-2016 Guenther Brunthaler. All rights reserved.
+# 
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
 
 set -e
-trap 'echo "Failed!" >& 2' 0
-TARGET_PATH=
-VOLUME_PATH=
-! getopts "" OPT
+trap 'echo "$0 Failed!" >& 2' 0
+target_path=
+volume_path=
+while getopts "" opt
+do
+	case $opt in
+		*) false || exit
+	esac
+done
+shift `expr $OPTIND - 1 || :`
 if test $# -ge 2
 then
-	VOLUME_PATH=$1; shift
+	volume_path=$1; shift
 else
-	IFS= read -r VOLUME_PATH
+	IFS= read -r volume_path
 fi
-test $# != 0 && { TARGET_PATH=$1; shift; }
+test $# != 0 && { target_path=$1; shift; }
 test $# = 0
-test -n "$VOLUME_PATH"
-test -n "$TARGET_PATH"
+test -n "$volume_path"
+test -n "$target_path"; test x"$target_path" = x"${target_path#/}"
 
-found() {
-	echo "$start $size $VOLUME_PATH"
-	trap - 0
-	exit
-}
-
-start=; size=
-while IFS= read -r LINE
+export LC_COLLATE=C # Just in case "case" makes use of it in comparisons.
+while IFS= read -r line
 do
-	case $LINE in
-		"@"*"P="*)
-			start=${LINE%%","*}; size=${start#*"+"}
+	case $line in
+		"@"*"=$target_path")
+			start=${line%%"="*}; size=${start#*"+"}
 			start=${start#"@"}; start=${start%"+"*}
-			test x"${LINE#*,P=}" = x"$TARGET_PATH" && found
+			echo "$start $size $volume_path"
+			trap - 0; exit
 			;;
-		"|"*) test x"$LINE" = x"|$TARGET_PATH" && found
+		*"="*) ;;
+		*) break
 	esac
-done < "$VOLUME_PATH"
-trap - 0
-false
+done < "$volume_path"
+trap - 0; false
