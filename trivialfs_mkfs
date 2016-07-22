@@ -62,7 +62,7 @@ if test -n "$OUT"
 then
 	if test -b "$OUT"
 	then
-		RSIZE=`blockdev --getsize64 -- "$OUT"`
+		RSIZE=`blockdev --getsize64 "$OUT"`
 	else
 		test -f "$OUT"
 		RSIZE=`stat -c %s -- "$OUT"`

@@ -72,7 +72,7 @@ else
 fi
 if test -b "$src"
 then
-	outsize=`blockdev --getsize64 -- "$src"`
+	outsize=`blockdev --getsize64 "$src"`
 else
 	outsize=`fsize "$src"`
 fi

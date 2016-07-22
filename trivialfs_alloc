@@ -87,7 +87,7 @@ volume=$1; shift
 test -n "$volume"
 if test -b "$volume"
 then
-	maxsize=`blockdev --getsize64 -- "$volume"`
+	maxsize=`blockdev --getsize64 "$volume"`
 	softmax=false
 else
 	test -f "$volume"
