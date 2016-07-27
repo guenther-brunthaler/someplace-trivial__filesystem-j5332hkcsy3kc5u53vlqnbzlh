@@ -193,8 +193,8 @@ syntax_error() {
 
 # Verify $1 == $prefix as part of $cmd and that $offset and $length are uints.
 chk_prefix() {
-	validate_uint "$offset" \
-	&& validate_uint "$length" \
+	offset=`parse_bytecount "$offset"` \
+	&& length=`parse_bytecount "$length"` \
 	&& test x"$1" = x"$prefix" \
 	|| syntax_error
 }
