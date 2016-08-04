@@ -28,6 +28,10 @@ default_metadata_max_bytes=4096
 #
 # * "-length=pathname"
 #
+# * "%divisor"
+#
+# * "%divisor=remainder"
+#
 # The offsets and sizes are specified in bytes, but suffixes like B, kB, KiB,
 # MB, MiB etc. are allowed to multiply the values as bytes, kilobytes,
 # kibibytes etc. Only SI-units are supported and letter case must be correct.
@@ -47,6 +51,16 @@ default_metadata_max_bytes=4096
 # "-length" allocates the file at the end of the last unused gap within the
 # already-allocated space which is large enough. If there are no allocations
 # yet, the file is allocated at the end of the container or block device.
+#
+# "%$divisor=$remainder" defines the alignment for all following commands
+# until the next alignment definition (if any). It specifies that valid
+# lengths must be a multiple of $divisor, and valid offsets must be a multiple
+# of $divisor, plus $remainder. "%$divisor" is a short form for "%$divisor=0".
+# The initial $divisor is 1 and the initial $remainder is 0. Lengths of
+# commands "+length=pathname" and "-length=pathname" will be rounded up to a
+# multiple of $divisor, and only correctly aligned offsets will be considered
+# during the search. In commands where explicit offsets are specified, it will
+# be verified that length and offset are correctly aligned.
 #
 # Note that pathnames use "/" as directory separators and must be absolute,
 # but must not start with a "/". Pathnames starting with a "/" are reserved
@@ -197,6 +211,12 @@ chk_prefix() {
 	&& length=`parse_bytecount "$length"` \
 	&& test x"$1" = x"$prefix" \
 	|| syntax_error
+	expr $offset % $divisor = $remainder > /dev/null \
+		|| die "Invalid alignment: Offset $offset is not equivalent" \
+			"to $remainder modulo $divisor!"
+	expr $length % $divisor = 0 > /dev/null \
+		|| die "Invalid alignment: Length $length is not a multiple" \
+			"of $divisor!"
 }
 
 overlap() {
@@ -205,10 +225,51 @@ overlap() {
 		"'$fpath' ($flength bytes @ $foffset)!"
 }
 
+# Set $alovh to the additional bytes needed at offset $1 in order to move it
+# forward (if $2 is "+") or backward (if $2 is "-") in order to become a
+# correctly aligned offset.
+aligment_overhead() {
+	local r
+	r=`expr $1 % $divisor || :`
+	if test x$2 = x+
+	then
+		if test $r -le $remainder
+		then
+			alovh=`expr $remainder - $r || :`
+		else
+			alovh=`expr $divisor + $remainder - $r`
+		fi
+	else
+		test x$2 = x-
+		if test $r -ge $remainder
+		then
+			alovh=`expr $r - $remainder || :`
+		else
+			alovh=`expr $divisor + $r - $remainder`
+		fi
+	fi
+}
+
 process_cmd() {
 	local offset foffset length flength path fpath end fend
-	local prefix not_yet_eof cmd
+	local prefix not_yet_eof cmd alovh
 	cmd=$1; path=${cmd#*=}
+	if test x"${cmd#%}" != x"$cmd"
+	then
+		if test x"$path" != x"$cmd"
+		then
+			cmd=${cmd%"=$path"}
+			remainder=`parse_bytecount "$path"`
+		else
+			remainder=0
+		fi
+		divisor=`parse_bytecount "${cmd#%}"`
+		test $divisor = 0 && die "Alignment divisor must not be 0!"
+		test $remainder -lt $divisor \
+			|| die "Alignment remainder must be" \
+				"less than the divisor!"
+		return
+	fi
 	test x"$path" != x"$cmd" || die "Missing pathname in command '$cmd'!"
 	if test x"${path#/}" != x"$path"
 	then
@@ -300,26 +361,32 @@ process_cmd() {
 		case $offset in
 			'-'*)
 				# * "-length"
-				length=${offset#-}; offset=0
-				chk_prefix "-$length"
+				length=${offset#-}
+                                test x"-$length" = x"$prefix" || syntax_error
 				ascending=false
 				;;
 			'+'*)
 				# * "+length"
-				length=${offset#+}; offset=0
-				chk_prefix "+$length"
+				length=${offset#+}
+                                test x"$length+" = x"$prefix" || syntax_error
 				ascending=true
 				;;
 			*) syntax_error
 		esac
+		length=`parse_bytecount "$length"`
+		length=`
+			expr '(' $length + $divisor - 1 ')' / $divisor \
+				'*' $divisor || :
+		`
 		not_yet_eof=false
 		offset=; fend=
 		while IFS=' ' read -r foffset flength fpath
 		do
 			if
 				test -n "$fend" \
-				&& expr $fend + $length '<=' $foffset \
-					> /dev/null
+				&& aligment_overhead $fend + \
+				&& expr $fend + $alovh + $length \
+					'<=' $foffset > /dev/null
 			then
 				if $ascending
 				then
@@ -332,30 +399,54 @@ process_cmd() {
 		done < "$src"
 		if $not_yet_eof
 		then
+			# Ascending search.
+			fend=`expr $fend + $alovh || :`
 			process_cmd "@$fend+$length=$path"
 		elif $ascending
 		then
 			if IFS=' ' read -r foffset flength fpath < "$src"
 			then
+				aligment_overhead $foffset -
+				foffset=`expr $foffset - $alovh || :`
 				process_cmd "@$foffset-$length=$path"
 			else
 				offset=$default_metadata_max_byte
+				aligment_overhead $offset +
+				offset=`expr $offset + $alovh || :`
 				process_cmd "@$offset+$length=$path"
 			fi
 		elif test -n "$offset"
 		then
+			# Descending search and $offset is the end of best gap
+			# of sufficient size to use.
+			aligment_overhead $offset -
+			offset=`expr $offset - $alovh || :`
 			process_cmd "@$offset-$length=$path"
 		else
+			# Descending and no suitable gap has been found
+			# following any allocated range.
 			if IFS=' ' read -r foffset flength fpath < "$src"
 			then
-				process_cmd "@$foffset-$length=$path"
+				# There is some first entry. Most likely the
+				# pseudo-entry which specifies the allocation
+				# size of the FS. Allocate before it.
+				true
 			else
-				process_cmd "@$maxsize-$length=$path"
+				# There are no entries at all.
+				foffset=$maxsize
 			fi
+			aligment_overhead $foffset -
+			test $foffset -gt $alovh \
+				|| die "Insufficient space left" \
+					"for alignment!"
+			foffset=`expr $foffset - $alovh || :`
+			process_cmd "@$foffset-$length=$path"
 		fi
 	fi
 }
 
+divisor=1
+remainder=0
 if test $# = 0
 then
 	while IFS= read -r cmd
