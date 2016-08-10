@@ -30,9 +30,11 @@ trap cleanup 0
 TARGET_UUID=
 LOCATE_NBDs=
 LOCATE_NOTHING=
-while getopts ni OPT
+shell=sh
+while getopts nis: OPT
 do
 	case $OPT in
+		s) shell=$OPTARG;;
 		n) LOCATE_NBDs=y;;
 		i) LOCATE_NOTHING=y;;
 		*) fail
@@ -102,7 +104,7 @@ then
 	do
 		echo "$head $tail"
 	done | sort -n -k3 -k1 -k2 | cut -d" " -f4- \
-	| "$0" -i "$TARGET_UUID"
+	| $shell "$0" -i "$TARGET_UUID"
 	exit
 fi
 test -z "$LOCATE_NBDs"
